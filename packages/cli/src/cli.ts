@@ -27,6 +27,10 @@ function parseArgs(argv: string[]): CliArgs {
       continue
     }
 
+    if (value === '--') {
+      continue
+    }
+
     if (value === '--prompt') {
       args.printPrompt = true
       continue

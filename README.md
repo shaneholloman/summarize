@@ -26,6 +26,12 @@ pnpm install
 pnpm build
 ```
 
+Run without building (direct TS via `tsx`):
+
+```bash
+pnpm summarize -- "https://example.com" --prompt
+```
+
 Summarize a URL:
 
 ```bash
