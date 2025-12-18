@@ -1,7 +1,7 @@
+import fs from 'node:fs/promises'
+import type { ModelMessage } from 'ai'
 import { Command, CommanderError } from 'commander'
 import { createLiveRenderer, render as renderMarkdownAnsi } from 'markdansi'
-import type { ModelMessage } from 'ai'
-import fs from 'node:fs/promises'
 import { loadSummarizeConfig } from './config.js'
 import {
   buildAssetPromptMessages,
@@ -24,9 +24,9 @@ import {
   parseYoutubeMode,
 } from './flags.js'
 import { generateTextWithModelId, streamTextWithModelId } from './llm/generate-text.js'
+import { resolveGoogleModelForUsage } from './llm/google-models.js'
 import { createHtmlToMarkdownConverter } from './llm/html-to-markdown.js'
 import { normalizeGatewayStyleModelId, parseGatewayStyleModelId } from './llm/model-id.js'
-import { resolveGoogleModelForUsage } from './llm/google-models.js'
 import {
   loadLiteLlmCatalog,
   resolveLiteLlmMaxOutputTokensForModelId,
@@ -49,7 +49,7 @@ type RunEnv = {
 }
 
 type JsonOutput = {
-  input: ({
+  input: {
     timeoutMs: number
     length: { kind: 'preset'; preset: string } | { kind: 'chars'; maxCharacters: number }
     model: string
@@ -69,7 +69,7 @@ type JsonOutput = {
         kind: 'asset-url'
         url: string
       }
-  ))
+  )
   env: {
     hasXaiKey: boolean
     hasOpenAIKey: boolean
@@ -273,7 +273,11 @@ async function resolveModelIdForLlmCall({
     )
   }
 
-  return { modelId: `google/${resolved.resolvedModelId}`, note: resolved.note, forceStreamOff: false }
+  return {
+    modelId: `google/${resolved.resolvedModelId}`,
+    note: resolved.note,
+    forceStreamOff: false,
+  }
 }
 
 function attachRichHelp(
@@ -770,59 +774,57 @@ export async function runCli(
       attachment: { part: attachment.part, mediaType: attachment.mediaType },
     })
 
-	    const modelResolution = await resolveModelIdForLlmCall({
-	      parsedModel,
-	      streamingEnabled,
-	      apiKeys: { googleApiKey: apiKeysForLlm.googleApiKey },
-	      fetchImpl: trackedFetch,
-	      timeoutMs,
-	    })
-	    if (modelResolution.note && verbose) {
-	      writeVerbose(stderr, verbose, modelResolution.note, verboseColor)
-	    }
-	    const effectiveModelId = modelResolution.modelId
-	    const parsedModelEffective = parseGatewayStyleModelId(effectiveModelId)
-	    const streamingEnabledForCall = streamingEnabled && !modelResolution.forceStreamOff
+    const modelResolution = await resolveModelIdForLlmCall({
+      parsedModel,
+      streamingEnabled,
+      apiKeys: { googleApiKey: apiKeysForLlm.googleApiKey },
+      fetchImpl: trackedFetch,
+      timeoutMs,
+    })
+    if (modelResolution.note && verbose) {
+      writeVerbose(stderr, verbose, modelResolution.note, verboseColor)
+    }
+    const effectiveModelId = modelResolution.modelId
+    const parsedModelEffective = parseGatewayStyleModelId(effectiveModelId)
+    const streamingEnabledForCall = streamingEnabled && !modelResolution.forceStreamOff
 
     const summaryLengthTarget =
-      lengthArg.kind === 'preset'
-        ? lengthArg.preset
-        : { maxCharacters: lengthArg.maxCharacters }
+      lengthArg.kind === 'preset' ? lengthArg.preset : { maxCharacters: lengthArg.maxCharacters }
 
-	    const { prompt: promptText, maxOutputTokens } = buildFileSummaryPrompt({
-	      filename: attachment.filename,
-	      mediaType: attachment.mediaType,
-	      summaryLength: summaryLengthTarget,
-	    })
-	    const maxOutputTokensCapped = await capMaxOutputTokensForModel({
-	      modelId: parsedModelEffective.canonical,
-	      requested: maxOutputTokens,
-	    })
+    const { prompt: promptText, maxOutputTokens } = buildFileSummaryPrompt({
+      filename: attachment.filename,
+      mediaType: attachment.mediaType,
+      summaryLength: summaryLengthTarget,
+    })
+    const maxOutputTokensCapped = await capMaxOutputTokensForModel({
+      modelId: parsedModelEffective.canonical,
+      requested: maxOutputTokens,
+    })
 
     const messages = buildAssetPromptMessages({ promptText, attachment })
 
-	    const shouldBufferSummaryForRender =
-	      streamingEnabledForCall && effectiveRenderMode === 'md' && isRichTty(stdout)
-	    const shouldLiveRenderSummary =
-	      streamingEnabledForCall && effectiveRenderMode === 'md-live' && isRichTty(stdout)
-	    const shouldStreamSummaryToStdout =
-	      streamingEnabledForCall && !shouldBufferSummaryForRender && !shouldLiveRenderSummary
+    const shouldBufferSummaryForRender =
+      streamingEnabledForCall && effectiveRenderMode === 'md' && isRichTty(stdout)
+    const shouldLiveRenderSummary =
+      streamingEnabledForCall && effectiveRenderMode === 'md-live' && isRichTty(stdout)
+    const shouldStreamSummaryToStdout =
+      streamingEnabledForCall && !shouldBufferSummaryForRender && !shouldLiveRenderSummary
 
-	    let summaryAlreadyPrinted = false
-	    let summary: string
+    let summaryAlreadyPrinted = false
+    let summary: string
 
-		    if (streamingEnabledForCall) {
-	      let streamResult: Awaited<ReturnType<typeof streamTextWithModelId>>
-	      try {
-		        streamResult = await streamTextWithModelId({
-		          modelId: parsedModelEffective.canonical,
-		          apiKeys: apiKeysForLlm,
-	          prompt: messages,
-	          temperature: 0,
-	          maxOutputTokens: maxOutputTokensCapped,
-	          timeoutMs,
-	          fetchImpl: trackedFetch,
-	        })
+    if (streamingEnabledForCall) {
+      let streamResult: Awaited<ReturnType<typeof streamTextWithModelId>>
+      try {
+        streamResult = await streamTextWithModelId({
+          modelId: parsedModelEffective.canonical,
+          apiKeys: apiKeysForLlm,
+          prompt: messages,
+          temperature: 0,
+          maxOutputTokens: maxOutputTokensCapped,
+          timeoutMs,
+          fetchImpl: trackedFetch,
+        })
       } catch (error) {
         if (isUnsupportedAttachmentError(error)) {
           throw new Error(
@@ -833,35 +835,35 @@ export async function runCli(
         throw error
       }
 
-	      let streamed = ''
-	      const liveRenderer = shouldLiveRenderSummary
-	        ? createLiveRenderer({
-	            write: (chunk) => {
-	              clearProgressForStdout()
-	              stdout.write(chunk)
-	            },
-	            width: terminalWidth(stdout, env),
-	            renderFrame: (markdown) =>
-	              renderMarkdownAnsi(markdown, {
-	                width: terminalWidth(stdout, env),
+      let streamed = ''
+      const liveRenderer = shouldLiveRenderSummary
+        ? createLiveRenderer({
+            write: (chunk) => {
+              clearProgressForStdout()
+              stdout.write(chunk)
+            },
+            width: terminalWidth(stdout, env),
+            renderFrame: (markdown) =>
+              renderMarkdownAnsi(markdown, {
+                width: terminalWidth(stdout, env),
                 wrap: true,
                 color: supportsColor(stdout, env),
               }),
           })
         : null
       let lastFrameAtMs = 0
-	      try {
-	        try {
-	          let cleared = false
-	          for await (const delta of streamResult.textStream) {
-	            if (!cleared) {
-	              clearProgressForStdout()
-	              cleared = true
-	            }
-	            streamed += delta
-	            if (shouldStreamSummaryToStdout) {
-	              stdout.write(delta)
-	              continue
+      try {
+        try {
+          let cleared = false
+          for await (const delta of streamResult.textStream) {
+            if (!cleared) {
+              clearProgressForStdout()
+              cleared = true
+            }
+            streamed += delta
+            if (shouldStreamSummaryToStdout) {
+              stdout.write(delta)
+              continue
             }
 
             if (liveRenderer) {
@@ -901,25 +903,25 @@ export async function runCli(
         usage,
         purpose: 'summary',
       })
-	      summary = streamed
+      summary = streamed
 
-	      if (shouldStreamSummaryToStdout) {
-	        if (!streamed.endsWith('\n')) {
-	          stdout.write('\n')
-	        }
-	        summaryAlreadyPrinted = true
-	      }
-	    } else {
-	      let result: Awaited<ReturnType<typeof summarizeWithModelId>>
-	      try {
-	        result = await summarizeWithModelId({
-	          modelId: parsedModelEffective.canonical,
-	          prompt: messages,
-	          maxOutputTokens: maxOutputTokensCapped,
-	          timeoutMs,
-	          fetchImpl: trackedFetch,
-	          apiKeys: apiKeysForLlm,
-	        })
+      if (shouldStreamSummaryToStdout) {
+        if (!streamed.endsWith('\n')) {
+          stdout.write('\n')
+        }
+        summaryAlreadyPrinted = true
+      }
+    } else {
+      let result: Awaited<ReturnType<typeof summarizeWithModelId>>
+      try {
+        result = await summarizeWithModelId({
+          modelId: parsedModelEffective.canonical,
+          prompt: messages,
+          maxOutputTokens: maxOutputTokensCapped,
+          timeoutMs,
+          fetchImpl: trackedFetch,
+          apiKeys: apiKeysForLlm,
+        })
       } catch (error) {
         if (isUnsupportedAttachmentError(error)) {
           throw new Error(
@@ -934,54 +936,54 @@ export async function runCli(
         model: result.canonicalModelId,
         usage: result.usage,
         purpose: 'summary',
-	      })
-	      summary = result.text
-	    }
+      })
+      summary = result.text
+    }
 
-	    summary = summary.trim()
+    summary = summary.trim()
     if (summary.length === 0) {
       throw new Error('LLM returned an empty summary')
     }
 
-      const extracted = {
-        kind: 'asset' as const,
-        source: sourceLabel,
-        mediaType: attachment.mediaType,
-        filename: attachment.filename,
-      }
+    const extracted = {
+      kind: 'asset' as const,
+      source: sourceLabel,
+      mediaType: attachment.mediaType,
+      filename: attachment.filename,
+    }
 
-		    if (json) {
-		      clearProgressForStdout()
-		      const finishReport = await buildReport()
-		      const costReport = cost || verbose ? finishReport : null
-		      const input: JsonOutput['input'] =
-		        sourceKind === 'file'
-	          ? {
-	              kind: 'file',
-	              filePath: sourceLabel,
-	              timeoutMs,
-	              length:
-	                lengthArg.kind === 'preset'
-	                  ? { kind: 'preset', preset: lengthArg.preset }
-	                  : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
-	              model,
-	            }
-	          : {
-	              kind: 'asset-url',
-	              url: sourceLabel,
-	              timeoutMs,
-	              length:
-	                lengthArg.kind === 'preset'
-	                  ? { kind: 'preset', preset: lengthArg.preset }
-	                  : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
-	              model,
-	            }
+    if (json) {
+      clearProgressForStdout()
+      const finishReport = await buildReport()
+      const costReport = cost || verbose ? finishReport : null
+      const input: JsonOutput['input'] =
+        sourceKind === 'file'
+          ? {
+              kind: 'file',
+              filePath: sourceLabel,
+              timeoutMs,
+              length:
+                lengthArg.kind === 'preset'
+                  ? { kind: 'preset', preset: lengthArg.preset }
+                  : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+              model,
+            }
+          : {
+              kind: 'asset-url',
+              url: sourceLabel,
+              timeoutMs,
+              length:
+                lengthArg.kind === 'preset'
+                  ? { kind: 'preset', preset: lengthArg.preset }
+                  : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+              model,
+            }
       const payload: JsonOutput = {
         input,
-	        env: {
-	          hasXaiKey: Boolean(xaiApiKey),
-	          hasOpenAIKey: Boolean(apiKey),
-	          hasApifyToken: Boolean(apifyToken),
+        env: {
+          hasXaiKey: Boolean(xaiApiKey),
+          hasOpenAIKey: Boolean(apiKey),
+          hasApifyToken: Boolean(apifyToken),
           hasFirecrawlKey: firecrawlConfigured,
           hasGoogleKey: googleConfigured,
           hasAnthropicKey: anthropicConfigured,
@@ -999,11 +1001,11 @@ export async function runCli(
         summary,
       }
 
-	      if (costReport) {
-	        writeCostReport(costReport)
-	      }
-	      stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
-	      writeFinishLine({
+      if (costReport) {
+        writeCostReport(costReport)
+      }
+      stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+      writeFinishLine({
         stderr,
         elapsedMs: Date.now() - runStartedAtMs,
         model: parsedModelEffective.canonical,
@@ -1015,12 +1017,12 @@ export async function runCli(
       return
     }
 
-	    if (!summaryAlreadyPrinted) {
-	      clearProgressForStdout()
-	      const rendered =
-	        (effectiveRenderMode === 'md' || effectiveRenderMode === 'md-live') && isRichTty(stdout)
-	          ? renderMarkdownAnsi(summary, {
-	              width: terminalWidth(stdout, env),
+    if (!summaryAlreadyPrinted) {
+      clearProgressForStdout()
+      const rendered =
+        (effectiveRenderMode === 'md' || effectiveRenderMode === 'md-live') && isRichTty(stdout)
+          ? renderMarkdownAnsi(summary, {
+              width: terminalWidth(stdout, env),
               wrap: true,
               color: supportsColor(stdout, env),
             })
@@ -1045,9 +1047,9 @@ export async function runCli(
     })
   }
 
-	  if (inputTarget.kind === 'file') {
-	    let sizeLabel: string | null = null
-	    try {
+  if (inputTarget.kind === 'file') {
+    let sizeLabel: string | null = null
+    try {
       const stat = await fs.stat(inputTarget.filePath)
       if (stat.isFile()) {
         sizeLabel = formatBytes(stat.size)
@@ -1063,37 +1065,37 @@ export async function runCli(
       isTty: progressEnabled,
       write: (data) => stderr.write(data),
     })
-	    const spinner = startSpinner({
-	      text: sizeLabel ? `Loading file (${sizeLabel})…` : 'Loading file…',
-	      enabled: progressEnabled,
-	      stream: stderr,
-	    })
-	    let stopped = false
-	    const stopProgress = () => {
-	      if (stopped) return
-	      stopped = true
-	      spinner.stopAndClear()
-	      stopOscProgress()
-	    }
-	    clearProgressBeforeStdout = stopProgress
-	    try {
-	      const loaded = await loadLocalAsset({ filePath: inputTarget.filePath })
-	      if (progressEnabled) {
-	        spinner.setText(sizeLabel ? `Summarizing (${sizeLabel})…` : 'Summarizing…')
-	      }
-	      await summarizeAsset({
-	        sourceKind: 'file',
-	        sourceLabel: loaded.sourceLabel,
-	        attachment: loaded.attachment,
-	      })
-	      return
-	    } finally {
-	      if (clearProgressBeforeStdout === stopProgress) {
-	        clearProgressBeforeStdout = null
-	      }
-	      stopProgress()
-	    }
-	  }
+    const spinner = startSpinner({
+      text: sizeLabel ? `Loading file (${sizeLabel})…` : 'Loading file…',
+      enabled: progressEnabled,
+      stream: stderr,
+    })
+    let stopped = false
+    const stopProgress = () => {
+      if (stopped) return
+      stopped = true
+      spinner.stopAndClear()
+      stopOscProgress()
+    }
+    clearProgressBeforeStdout = stopProgress
+    try {
+      const loaded = await loadLocalAsset({ filePath: inputTarget.filePath })
+      if (progressEnabled) {
+        spinner.setText(sizeLabel ? `Summarizing (${sizeLabel})…` : 'Summarizing…')
+      }
+      await summarizeAsset({
+        sourceKind: 'file',
+        sourceLabel: loaded.sourceLabel,
+        attachment: loaded.attachment,
+      })
+      return
+    } finally {
+      if (clearProgressBeforeStdout === stopProgress) {
+        clearProgressBeforeStdout = null
+      }
+      stopProgress()
+    }
+  }
 
   if (url && !isYoutubeUrl) {
     const kind = await classifyUrl({ url, fetchImpl: trackedFetch, timeoutMs })
@@ -1105,47 +1107,47 @@ export async function runCli(
         isTty: progressEnabled,
         write: (data) => stderr.write(data),
       })
-	      const spinner = startSpinner({
-	        text: 'Downloading file…',
-	        enabled: progressEnabled,
-	        stream: stderr,
-	      })
-	      let stopped = false
-	      const stopProgress = () => {
-	        if (stopped) return
-	        stopped = true
-	        spinner.stopAndClear()
-	        stopOscProgress()
-	      }
-	      clearProgressBeforeStdout = stopProgress
-	      try {
-	        const loaded = await (async () => {
-	          try {
-	            return await loadRemoteAsset({ url, fetchImpl: trackedFetch, timeoutMs })
-	          } catch (error) {
-	            if (error instanceof Error && /HTML/i.test(error.message)) {
-	              return null
-	            }
-	            throw error
-	          }
-	        })()
+      const spinner = startSpinner({
+        text: 'Downloading file…',
+        enabled: progressEnabled,
+        stream: stderr,
+      })
+      let stopped = false
+      const stopProgress = () => {
+        if (stopped) return
+        stopped = true
+        spinner.stopAndClear()
+        stopOscProgress()
+      }
+      clearProgressBeforeStdout = stopProgress
+      try {
+        const loaded = await (async () => {
+          try {
+            return await loadRemoteAsset({ url, fetchImpl: trackedFetch, timeoutMs })
+          } catch (error) {
+            if (error instanceof Error && /HTML/i.test(error.message)) {
+              return null
+            }
+            throw error
+          }
+        })()
 
-	        if (!loaded) return
-	        if (progressEnabled) spinner.setText('Summarizing…')
-	        await summarizeAsset({
-	          sourceKind: 'asset-url',
-	          sourceLabel: loaded.sourceLabel,
-	          attachment: loaded.attachment,
-	        })
-	        return
-	      } finally {
-	        if (clearProgressBeforeStdout === stopProgress) {
-	          clearProgressBeforeStdout = null
-	        }
-	        stopProgress()
-	      }
-	    }
-	  }
+        if (!loaded) return
+        if (progressEnabled) spinner.setText('Summarizing…')
+        await summarizeAsset({
+          sourceKind: 'asset-url',
+          sourceLabel: loaded.sourceLabel,
+          attachment: loaded.attachment,
+        })
+        return
+      } finally {
+        if (clearProgressBeforeStdout === stopProgress) {
+          clearProgressBeforeStdout = null
+        }
+        stopProgress()
+      }
+    }
+  }
 
   if (!url) {
     throw new Error('Only HTTP and HTTPS URLs can be summarized')
@@ -1256,109 +1258,510 @@ export async function runCli(
     isTty: progressEnabled,
     write: (data) => stderr.write(data),
   })
-	  const spinner = startSpinner({
-	    text: 'Fetching website…',
-	    enabled: progressEnabled,
-	    stream: stderr,
-	  })
-	  let stopped = false
-		  const stopProgress = () => {
-		    if (stopped) return
-		    stopped = true
-		    spinner.stopAndClear()
-		    stopOscProgress()
-		  }
-		  clearProgressBeforeStdout = stopProgress
-		  try {
-		  const extracted = await (async () => {
-		    try {
-		      const result = await client.fetchLinkContent(url, {
-		        timeoutMs,
-		        youtubeTranscript: youtubeMode,
-		        firecrawl: firecrawlMode,
-		        format: markdownRequested ? 'markdown' : 'text',
-		      })
-		      if (progressEnabled) spinner.setText('Summarizing…')
-		      return result
-		    } catch (error) {
-		      throw error
-		    }
-		  })()
-	  writeVerbose(
-	    stderr,
-	    verbose,
-    `extract done strategy=${extracted.diagnostics.strategy} siteName=${formatOptionalString(
-      extracted.siteName
-    )} title=${formatOptionalString(extracted.title)} transcriptSource=${formatOptionalString(
-      extracted.transcriptSource
-    )}`,
-    verboseColor
-  )
-  writeVerbose(
-    stderr,
-    verbose,
-    `extract stats characters=${extracted.totalCharacters} words=${extracted.wordCount} transcriptCharacters=${formatOptionalNumber(
-      extracted.transcriptCharacters
-    )} transcriptLines=${formatOptionalNumber(extracted.transcriptLines)}`,
-    verboseColor
-  )
-  writeVerbose(
-    stderr,
-    verbose,
-    `extract firecrawl attempted=${extracted.diagnostics.firecrawl.attempted} used=${extracted.diagnostics.firecrawl.used} notes=${formatOptionalString(
-      extracted.diagnostics.firecrawl.notes ?? null
-    )}`,
-    verboseColor
-  )
-  writeVerbose(
-    stderr,
-    verbose,
-    `extract markdown requested=${extracted.diagnostics.markdown.requested} used=${extracted.diagnostics.markdown.used} provider=${formatOptionalString(
-      extracted.diagnostics.markdown.provider ?? null
-    )} notes=${formatOptionalString(extracted.diagnostics.markdown.notes ?? null)}`,
-    verboseColor
-  )
-  writeVerbose(
-    stderr,
-    verbose,
-    `extract transcript textProvided=${extracted.diagnostics.transcript.textProvided} provider=${formatOptionalString(
-      extracted.diagnostics.transcript.provider ?? null
-    )} attemptedProviders=${
-      extracted.diagnostics.transcript.attemptedProviders.length > 0
-        ? extracted.diagnostics.transcript.attemptedProviders.join(',')
-        : 'none'
-    } notes=${formatOptionalString(extracted.diagnostics.transcript.notes ?? null)}`,
-    verboseColor
-  )
-
-  const isYouTube = extracted.siteName === 'YouTube'
-  const prompt = buildLinkSummaryPrompt({
-    url: extracted.url,
-    title: extracted.title,
-    siteName: extracted.siteName,
-    description: extracted.description,
-    content: extracted.content,
-    truncated: false,
-    hasTranscript:
-      isYouTube ||
-      (extracted.transcriptSource !== null && extracted.transcriptSource !== 'unavailable'),
-    summaryLength:
-      lengthArg.kind === 'preset' ? lengthArg.preset : { maxCharacters: lengthArg.maxCharacters },
-    shares: [],
+  const spinner = startSpinner({
+    text: 'Fetching website…',
+    enabled: progressEnabled,
+    stream: stderr,
   })
+  let stopped = false
+  const stopProgress = () => {
+    if (stopped) return
+    stopped = true
+    spinner.stopAndClear()
+    stopOscProgress()
+  }
+  clearProgressBeforeStdout = stopProgress
+  try {
+    const extracted = await client.fetchLinkContent(url, {
+      timeoutMs,
+      youtubeTranscript: youtubeMode,
+      firecrawl: firecrawlMode,
+      format: markdownRequested ? 'markdown' : 'text',
+    })
+    if (progressEnabled) spinner.setText('Summarizing…')
+    writeVerbose(
+      stderr,
+      verbose,
+      `extract done strategy=${extracted.diagnostics.strategy} siteName=${formatOptionalString(
+        extracted.siteName
+      )} title=${formatOptionalString(extracted.title)} transcriptSource=${formatOptionalString(
+        extracted.transcriptSource
+      )}`,
+      verboseColor
+    )
+    writeVerbose(
+      stderr,
+      verbose,
+      `extract stats characters=${extracted.totalCharacters} words=${extracted.wordCount} transcriptCharacters=${formatOptionalNumber(
+        extracted.transcriptCharacters
+      )} transcriptLines=${formatOptionalNumber(extracted.transcriptLines)}`,
+      verboseColor
+    )
+    writeVerbose(
+      stderr,
+      verbose,
+      `extract firecrawl attempted=${extracted.diagnostics.firecrawl.attempted} used=${extracted.diagnostics.firecrawl.used} notes=${formatOptionalString(
+        extracted.diagnostics.firecrawl.notes ?? null
+      )}`,
+      verboseColor
+    )
+    writeVerbose(
+      stderr,
+      verbose,
+      `extract markdown requested=${extracted.diagnostics.markdown.requested} used=${extracted.diagnostics.markdown.used} provider=${formatOptionalString(
+        extracted.diagnostics.markdown.provider ?? null
+      )} notes=${formatOptionalString(extracted.diagnostics.markdown.notes ?? null)}`,
+      verboseColor
+    )
+    writeVerbose(
+      stderr,
+      verbose,
+      `extract transcript textProvided=${extracted.diagnostics.transcript.textProvided} provider=${formatOptionalString(
+        extracted.diagnostics.transcript.provider ?? null
+      )} attemptedProviders=${
+        extracted.diagnostics.transcript.attemptedProviders.length > 0
+          ? extracted.diagnostics.transcript.attemptedProviders.join(',')
+          : 'none'
+      } notes=${formatOptionalString(extracted.diagnostics.transcript.notes ?? null)}`,
+      verboseColor
+    )
 
-	  if (extractOnly) {
-		    clearProgressForStdout()
-		    if (json) {
-		      const finishReport = await buildReport()
-		      const costReport = cost || verbose ? finishReport : null
-		      const payload: JsonOutput = {
-	        input: {
-	          kind: 'url',
-	          url,
-	          timeoutMs,
-	          youtube: youtubeMode,
-	          firecrawl: firecrawlMode,
+    const isYouTube = extracted.siteName === 'YouTube'
+    const prompt = buildLinkSummaryPrompt({
+      url: extracted.url,
+      title: extracted.title,
+      siteName: extracted.siteName,
+      description: extracted.description,
+      content: extracted.content,
+      truncated: false,
+      hasTranscript:
+        isYouTube ||
+        (extracted.transcriptSource !== null && extracted.transcriptSource !== 'unavailable'),
+      summaryLength:
+        lengthArg.kind === 'preset' ? lengthArg.preset : { maxCharacters: lengthArg.maxCharacters },
+      shares: [],
+    })
+
+    if (extractOnly) {
+      clearProgressForStdout()
+      if (json) {
+        const finishReport = await buildReport()
+        const costReport = cost || verbose ? finishReport : null
+        const payload: JsonOutput = {
+          input: {
+            kind: 'url',
+            url,
+            timeoutMs,
+            youtube: youtubeMode,
+            firecrawl: firecrawlMode,
+            markdown: effectiveMarkdownMode,
+            length:
+              lengthArg.kind === 'preset'
+                ? { kind: 'preset', preset: lengthArg.preset }
+                : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+            model,
+          },
+          env: {
+            hasXaiKey: Boolean(xaiApiKey),
+            hasOpenAIKey: Boolean(apiKey),
+            hasApifyToken: Boolean(apifyToken),
+            hasFirecrawlKey: firecrawlConfigured,
+            hasGoogleKey: googleConfigured,
+            hasAnthropicKey: anthropicConfigured,
+          },
+          extracted,
+          prompt,
+          llm: null,
+          cost: costReport,
+          summary: null,
+        }
+        if (costReport) {
+          writeCostReport(costReport)
+        }
+        stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+        writeFinishLine({
+          stderr,
+          elapsedMs: Date.now() - runStartedAtMs,
+          model,
+          strategy: 'none',
+          chunkCount: null,
+          report: finishReport,
+          color: verboseColor,
+        })
+        return
+      }
+
+      stdout.write(`${extracted.content}\n`)
+      const report = await buildReport()
+      if (cost || verbose) writeCostReport(report)
+      writeFinishLine({
+        stderr,
+        elapsedMs: Date.now() - runStartedAtMs,
+        model,
+        strategy: 'none',
+        chunkCount: null,
+        report,
+        color: verboseColor,
+      })
+      return
+    }
+
+    const parsedModel = parseGatewayStyleModelId(model)
+    const apiKeysForLlm = {
+      xaiApiKey,
+      openaiApiKey: apiKey,
+      googleApiKey: googleConfigured ? googleApiKey : null,
+      anthropicApiKey: anthropicConfigured ? anthropicApiKey : null,
+    }
+
+    const requiredKeyEnv =
+      parsedModel.provider === 'xai'
+        ? 'XAI_API_KEY'
+        : parsedModel.provider === 'google'
+          ? 'GOOGLE_GENERATIVE_AI_API_KEY'
+          : parsedModel.provider === 'anthropic'
+            ? 'ANTHROPIC_API_KEY'
+            : 'OPENAI_API_KEY'
+    const hasRequiredKey =
+      parsedModel.provider === 'xai'
+        ? Boolean(xaiApiKey)
+        : parsedModel.provider === 'google'
+          ? googleConfigured
+          : parsedModel.provider === 'anthropic'
+            ? anthropicConfigured
+            : Boolean(apiKey)
+    if (!hasRequiredKey) {
+      throw new Error(
+        `Missing ${requiredKeyEnv} for model ${parsedModel.canonical}. Set the env var or choose a different --model.`
+      )
+    }
+
+    const modelResolution = await resolveModelIdForLlmCall({
+      parsedModel,
+      streamingEnabled,
+      apiKeys: { googleApiKey: apiKeysForLlm.googleApiKey },
+      fetchImpl: trackedFetch,
+      timeoutMs,
+    })
+    if (modelResolution.note && verbose) {
+      writeVerbose(stderr, verbose, modelResolution.note, verboseColor)
+    }
+    const parsedModelEffective = parseGatewayStyleModelId(modelResolution.modelId)
+    const streamingEnabledForCall = streamingEnabled && !modelResolution.forceStreamOff
+
+    writeVerbose(
+      stderr,
+      verbose,
+      `mode summarize provider=${parsedModelEffective.provider} model=${parsedModelEffective.canonical}`,
+      verboseColor
+    )
+    const maxCompletionTokens =
+      lengthArg.kind === 'preset'
+        ? SUMMARY_LENGTH_TO_TOKENS[lengthArg.preset]
+        : estimateMaxCompletionTokensForCharacters(lengthArg.maxCharacters)
+    const maxOutputTokensForCall = await capMaxOutputTokensForModel({
+      modelId: parsedModelEffective.canonical,
+      requested: maxCompletionTokens,
+    })
+
+    const isLargeContent = extracted.content.length >= MAP_REDUCE_TRIGGER_CHARACTERS
+    let strategy: 'single' | 'map-reduce' = 'single'
+    let chunkCount = 1
+    const shouldBufferSummaryForRender =
+      streamingEnabledForCall && effectiveRenderMode === 'md' && isRichTty(stdout)
+    const shouldLiveRenderSummary =
+      streamingEnabledForCall && effectiveRenderMode === 'md-live' && isRichTty(stdout)
+    const shouldStreamSummaryToStdout =
+      streamingEnabledForCall && !shouldBufferSummaryForRender && !shouldLiveRenderSummary
+    let summaryAlreadyPrinted = false
+
+    let summary: string
+    if (!isLargeContent) {
+      writeVerbose(stderr, verbose, 'summarize strategy=single', verboseColor)
+      if (streamingEnabledForCall) {
+        writeVerbose(
+          stderr,
+          verbose,
+          `summarize stream=on buffered=${shouldBufferSummaryForRender}`,
+          verboseColor
+        )
+        const streamResult = await streamTextWithModelId({
+          modelId: parsedModelEffective.canonical,
+          apiKeys: apiKeysForLlm,
+          prompt,
+          temperature: 0,
+          maxOutputTokens: maxOutputTokensForCall,
+          timeoutMs,
+          fetchImpl: trackedFetch,
+        })
+        let streamed = ''
+        const liveRenderer = shouldLiveRenderSummary
+          ? createLiveRenderer({
+              write: (chunk) => {
+                clearProgressForStdout()
+                stdout.write(chunk)
+              },
+              width: terminalWidth(stdout, env),
+              renderFrame: (markdown) =>
+                renderMarkdownAnsi(markdown, {
+                  width: terminalWidth(stdout, env),
+                  wrap: true,
+                  color: supportsColor(stdout, env),
+                }),
+            })
+          : null
+        let lastFrameAtMs = 0
+        try {
+          let cleared = false
+          for await (const delta of streamResult.textStream) {
+            if (!cleared) {
+              clearProgressForStdout()
+              cleared = true
+            }
+            streamed += delta
+            if (shouldStreamSummaryToStdout) {
+              stdout.write(delta)
+              continue
+            }
+
+            if (liveRenderer) {
+              const now = Date.now()
+              const due = now - lastFrameAtMs >= 120
+              const hasNewline = delta.includes('\n')
+              if (hasNewline || due) {
+                liveRenderer.render(streamed)
+                lastFrameAtMs = now
+              }
+            }
+          }
+
+          const trimmed = streamed.trim()
+          streamed = trimmed
+          if (liveRenderer) {
+            liveRenderer.render(trimmed)
+            summaryAlreadyPrinted = true
+          }
+        } finally {
+          liveRenderer?.finish()
+        }
+        const usage = await streamResult.usage
+        llmCalls.push({
+          provider: streamResult.provider,
+          model: streamResult.canonicalModelId,
+          usage,
+          purpose: 'summary',
+        })
+        summary = streamed
+        if (shouldStreamSummaryToStdout) {
+          if (!streamed.endsWith('\n')) {
+            stdout.write('\n')
+          }
+          summaryAlreadyPrinted = true
+        }
+      } else {
+        const result = await summarizeWithModelId({
+          modelId: parsedModelEffective.canonical,
+          prompt,
+          maxOutputTokens: maxOutputTokensForCall,
+          timeoutMs,
+          fetchImpl: trackedFetch,
+          apiKeys: apiKeysForLlm,
+        })
+        llmCalls.push({
+          provider: result.provider,
+          model: result.canonicalModelId,
+          usage: result.usage,
+          purpose: 'summary',
+        })
+        summary = result.text
+      }
+    } else {
+      strategy = 'map-reduce'
+      const chunks = splitTextIntoChunks(extracted.content, MAP_REDUCE_CHUNK_CHARACTERS)
+      chunkCount = chunks.length
+
+      stderr.write(
+        `Large input (${extracted.content.length} chars); summarizing in ${chunks.length} chunks.\n`
+      )
+      writeVerbose(
+        stderr,
+        verbose,
+        `summarize strategy=map-reduce chunks=${chunks.length}`,
+        verboseColor
+      )
+
+      const chunkNotes: string[] = []
+      for (let i = 0; i < chunks.length; i += 1) {
+        writeVerbose(
+          stderr,
+          verbose,
+          `summarize chunk ${i + 1}/${chunks.length} notes start`,
+          verboseColor
+        )
+        const chunkPrompt = buildChunkNotesPrompt({
+          content: chunks[i] ?? '',
+        })
+
+        const chunkNoteTokens = await capMaxOutputTokensForModel({
+          modelId: parsedModelEffective.canonical,
+          requested: SUMMARY_LENGTH_TO_TOKENS.medium,
+        })
+        const notesResult = await summarizeWithModelId({
+          modelId: parsedModelEffective.canonical,
+          prompt: chunkPrompt,
+          maxOutputTokens: chunkNoteTokens,
+          timeoutMs,
+          fetchImpl: trackedFetch,
+          apiKeys: apiKeysForLlm,
+        })
+        const notes = notesResult.text
+
+        llmCalls.push({
+          provider: notesResult.provider,
+          model: notesResult.canonicalModelId,
+          usage: notesResult.usage,
+          purpose: 'chunk-notes',
+        })
+
+        chunkNotes.push(notes.trim())
+      }
+
+      writeVerbose(stderr, verbose, 'summarize merge chunk notes', verboseColor)
+      const mergedContent = `Chunk notes (generated from the full input):\n\n${chunkNotes
+        .filter((value) => value.length > 0)
+        .join('\n\n')}`
+
+      const mergedPrompt = buildLinkSummaryPrompt({
+        url: extracted.url,
+        title: extracted.title,
+        siteName: extracted.siteName,
+        description: extracted.description,
+        content: mergedContent,
+        truncated: false,
+        hasTranscript:
+          isYouTube ||
+          (extracted.transcriptSource !== null && extracted.transcriptSource !== 'unavailable'),
+        summaryLength:
+          lengthArg.kind === 'preset'
+            ? lengthArg.preset
+            : { maxCharacters: lengthArg.maxCharacters },
+        shares: [],
+      })
+
+      if (streamingEnabledForCall) {
+        writeVerbose(
+          stderr,
+          verbose,
+          `summarize stream=on buffered=${shouldBufferSummaryForRender}`,
+          verboseColor
+        )
+        const streamResult = await streamTextWithModelId({
+          modelId: parsedModelEffective.canonical,
+          apiKeys: apiKeysForLlm,
+          prompt: mergedPrompt,
+          temperature: 0,
+          maxOutputTokens: maxOutputTokensForCall,
+          timeoutMs,
+          fetchImpl: trackedFetch,
+        })
+        let streamed = ''
+        const liveRenderer = shouldLiveRenderSummary
+          ? createLiveRenderer({
+              write: (chunk) => {
+                clearProgressForStdout()
+                stdout.write(chunk)
+              },
+              width: terminalWidth(stdout, env),
+              renderFrame: (markdown) =>
+                renderMarkdownAnsi(markdown, {
+                  width: terminalWidth(stdout, env),
+                  wrap: true,
+                  color: supportsColor(stdout, env),
+                }),
+            })
+          : null
+        let lastFrameAtMs = 0
+        try {
+          let cleared = false
+          for await (const delta of streamResult.textStream) {
+            if (!cleared) {
+              clearProgressForStdout()
+              cleared = true
+            }
+            streamed += delta
+            if (shouldStreamSummaryToStdout) {
+              stdout.write(delta)
+              continue
+            }
+
+            if (liveRenderer) {
+              const now = Date.now()
+              const due = now - lastFrameAtMs >= 120
+              const hasNewline = delta.includes('\n')
+              if (hasNewline || due) {
+                liveRenderer.render(streamed)
+                lastFrameAtMs = now
+              }
+            }
+          }
+
+          const trimmed = streamed.trim()
+          streamed = trimmed
+          if (liveRenderer) {
+            liveRenderer.render(trimmed)
+            summaryAlreadyPrinted = true
+          }
+        } finally {
+          liveRenderer?.finish()
+        }
+        const usage = await streamResult.usage
+        llmCalls.push({
+          provider: streamResult.provider,
+          model: streamResult.canonicalModelId,
+          usage,
+          purpose: 'summary',
+        })
+        summary = streamed
+        if (shouldStreamSummaryToStdout) {
+          if (!streamed.endsWith('\n')) {
+            stdout.write('\n')
+          }
+          summaryAlreadyPrinted = true
+        }
+      } else {
+        const mergedResult = await summarizeWithModelId({
+          modelId: parsedModelEffective.canonical,
+          prompt: mergedPrompt,
+          maxOutputTokens: maxOutputTokensForCall,
+          timeoutMs,
+          fetchImpl: trackedFetch,
+          apiKeys: apiKeysForLlm,
+        })
+        llmCalls.push({
+          provider: mergedResult.provider,
+          model: mergedResult.canonicalModelId,
+          usage: mergedResult.usage,
+          purpose: 'summary',
+        })
+        summary = mergedResult.text
+      }
+    }
+
+    summary = summary.trim()
+    if (summary.length === 0) {
+      throw new Error('LLM returned an empty summary')
+    }
+
+    if (json) {
+      const finishReport = await buildReport()
+      const costReport = cost || verbose ? finishReport : null
+      const payload: JsonOutput = {
+        input: {
+          kind: 'url',
+          url,
+          timeoutMs,
+          youtube: youtubeMode,
+          firecrawl: firecrawlMode,
           markdown: effectiveMarkdownMode,
           length:
             lengthArg.kind === 'preset'
@@ -1376,10 +1779,17 @@ export async function runCli(
         },
         extracted,
         prompt,
-        llm: null,
+        llm: {
+          provider: parsedModelEffective.provider,
+          model: parsedModelEffective.canonical,
+          maxCompletionTokens,
+          strategy,
+          chunkCount,
+        },
         cost: costReport,
-        summary: null,
+        summary,
       }
+
       if (costReport) {
         writeCostReport(costReport)
       }
@@ -1387,460 +1797,47 @@ export async function runCli(
       writeFinishLine({
         stderr,
         elapsedMs: Date.now() - runStartedAtMs,
-        model,
-        strategy: 'none',
-        chunkCount: null,
+        model: parsedModelEffective.canonical,
+        strategy,
+        chunkCount,
         report: finishReport,
         color: verboseColor,
       })
       return
     }
 
-    stdout.write(`${extracted.content}\n`)
+    if (!summaryAlreadyPrinted) {
+      clearProgressForStdout()
+      const rendered =
+        (effectiveRenderMode === 'md' || effectiveRenderMode === 'md-live') && isRichTty(stdout)
+          ? renderMarkdownAnsi(summary, {
+              width: terminalWidth(stdout, env),
+              wrap: true,
+              color: supportsColor(stdout, env),
+            })
+          : summary
+
+      stdout.write(rendered)
+      if (!rendered.endsWith('\n')) {
+        stdout.write('\n')
+      }
+    }
+
     const report = await buildReport()
     if (cost || verbose) writeCostReport(report)
     writeFinishLine({
       stderr,
       elapsedMs: Date.now() - runStartedAtMs,
-      model,
-      strategy: 'none',
-      chunkCount: null,
+      model: parsedModelEffective.canonical,
+      strategy,
+      chunkCount,
       report,
       color: verboseColor,
     })
-    return
-  }
-
-  const parsedModel = parseGatewayStyleModelId(model)
-  const apiKeysForLlm = {
-    xaiApiKey,
-    openaiApiKey: apiKey,
-    googleApiKey: googleConfigured ? googleApiKey : null,
-    anthropicApiKey: anthropicConfigured ? anthropicApiKey : null,
-  }
-
-  const requiredKeyEnv =
-    parsedModel.provider === 'xai'
-      ? 'XAI_API_KEY'
-      : parsedModel.provider === 'google'
-        ? 'GOOGLE_GENERATIVE_AI_API_KEY'
-        : parsedModel.provider === 'anthropic'
-          ? 'ANTHROPIC_API_KEY'
-          : 'OPENAI_API_KEY'
-  const hasRequiredKey =
-    parsedModel.provider === 'xai'
-      ? Boolean(xaiApiKey)
-      : parsedModel.provider === 'google'
-        ? googleConfigured
-        : parsedModel.provider === 'anthropic'
-          ? anthropicConfigured
-          : Boolean(apiKey)
-  if (!hasRequiredKey) {
-    throw new Error(
-      `Missing ${requiredKeyEnv} for model ${parsedModel.canonical}. Set the env var or choose a different --model.`
-    )
-  }
-
-  const modelResolution = await resolveModelIdForLlmCall({
-    parsedModel,
-    streamingEnabled,
-    apiKeys: { googleApiKey: apiKeysForLlm.googleApiKey },
-    fetchImpl: trackedFetch,
-    timeoutMs,
-  })
-  if (modelResolution.note && verbose) {
-    writeVerbose(stderr, verbose, modelResolution.note, verboseColor)
-  }
-	  const parsedModelEffective = parseGatewayStyleModelId(modelResolution.modelId)
-	  const streamingEnabledForCall = streamingEnabled && !modelResolution.forceStreamOff
-
-	  writeVerbose(
-    stderr,
-    verbose,
-    `mode summarize provider=${parsedModelEffective.provider} model=${parsedModelEffective.canonical}`,
-    verboseColor
-  )
-	  const maxCompletionTokens =
-	    lengthArg.kind === 'preset'
-	      ? SUMMARY_LENGTH_TO_TOKENS[lengthArg.preset]
-	      : estimateMaxCompletionTokensForCharacters(lengthArg.maxCharacters)
-	  const maxOutputTokensForCall = await capMaxOutputTokensForModel({
-	    modelId: parsedModelEffective.canonical,
-	    requested: maxCompletionTokens,
-	  })
-
-	  const isLargeContent = extracted.content.length >= MAP_REDUCE_TRIGGER_CHARACTERS
-	  let strategy: 'single' | 'map-reduce' = 'single'
-	  let chunkCount = 1
-  const shouldBufferSummaryForRender =
-    streamingEnabledForCall && effectiveRenderMode === 'md' && isRichTty(stdout)
-  const shouldLiveRenderSummary =
-    streamingEnabledForCall && effectiveRenderMode === 'md-live' && isRichTty(stdout)
-  const shouldStreamSummaryToStdout =
-    streamingEnabledForCall && !shouldBufferSummaryForRender && !shouldLiveRenderSummary
-  let summaryAlreadyPrinted = false
-
-  let summary: string
-	  if (!isLargeContent) {
-	    writeVerbose(stderr, verbose, 'summarize strategy=single', verboseColor)
-	    if (streamingEnabledForCall) {
-      writeVerbose(
-        stderr,
-        verbose,
-        `summarize stream=on buffered=${shouldBufferSummaryForRender}`,
-        verboseColor
-      )
-	      const streamResult = await streamTextWithModelId({
-	        modelId: parsedModelEffective.canonical,
-	        apiKeys: apiKeysForLlm,
-	        prompt,
-	        temperature: 0,
-	        maxOutputTokens: maxOutputTokensForCall,
-	        timeoutMs,
-	        fetchImpl: trackedFetch,
-	      })
-	      let streamed = ''
-	      const liveRenderer = shouldLiveRenderSummary
-	        ? createLiveRenderer({
-	            write: (chunk) => {
-	              clearProgressForStdout()
-	              stdout.write(chunk)
-	            },
-	            width: terminalWidth(stdout, env),
-	            renderFrame: (markdown) =>
-	              renderMarkdownAnsi(markdown, {
-	                width: terminalWidth(stdout, env),
-                wrap: true,
-                color: supportsColor(stdout, env),
-              }),
-          })
-        : null
-	      let lastFrameAtMs = 0
-	      try {
-	        let cleared = false
-	        for await (const delta of streamResult.textStream) {
-	          if (!cleared) {
-	            clearProgressForStdout()
-	            cleared = true
-	          }
-	          streamed += delta
-	          if (shouldStreamSummaryToStdout) {
-	            stdout.write(delta)
-	            continue
-          }
-
-          if (liveRenderer) {
-            const now = Date.now()
-            const due = now - lastFrameAtMs >= 120
-            const hasNewline = delta.includes('\n')
-            if (hasNewline || due) {
-              liveRenderer.render(streamed)
-              lastFrameAtMs = now
-            }
-          }
-        }
-
-        const trimmed = streamed.trim()
-        streamed = trimmed
-        if (liveRenderer) {
-          liveRenderer.render(trimmed)
-          summaryAlreadyPrinted = true
-        }
-      } finally {
-        liveRenderer?.finish()
-      }
-      const usage = await streamResult.usage
-      llmCalls.push({
-        provider: streamResult.provider,
-        model: streamResult.canonicalModelId,
-        usage,
-        purpose: 'summary',
-      })
-      summary = streamed
-      if (shouldStreamSummaryToStdout) {
-        if (!streamed.endsWith('\n')) {
-          stdout.write('\n')
-        }
-        summaryAlreadyPrinted = true
-      }
-    } else {
-	      const result = await summarizeWithModelId({
-	        modelId: parsedModelEffective.canonical,
-	        prompt,
-	        maxOutputTokens: maxOutputTokensForCall,
-	        timeoutMs,
-	        fetchImpl: trackedFetch,
-	        apiKeys: apiKeysForLlm,
-	      })
-      llmCalls.push({
-        provider: result.provider,
-        model: result.canonicalModelId,
-        usage: result.usage,
-        purpose: 'summary',
-      })
-      summary = result.text
+  } finally {
+    if (clearProgressBeforeStdout === stopProgress) {
+      clearProgressBeforeStdout = null
     }
-  } else {
-    strategy = 'map-reduce'
-    const chunks = splitTextIntoChunks(extracted.content, MAP_REDUCE_CHUNK_CHARACTERS)
-    chunkCount = chunks.length
-
-    stderr.write(
-      `Large input (${extracted.content.length} chars); summarizing in ${chunks.length} chunks.\n`
-    )
-    writeVerbose(
-      stderr,
-      verbose,
-      `summarize strategy=map-reduce chunks=${chunks.length}`,
-      verboseColor
-    )
-
-	    const chunkNotes: string[] = []
-	    for (let i = 0; i < chunks.length; i += 1) {
-      writeVerbose(
-        stderr,
-        verbose,
-        `summarize chunk ${i + 1}/${chunks.length} notes start`,
-        verboseColor
-      )
-      const chunkPrompt = buildChunkNotesPrompt({
-        content: chunks[i] ?? '',
-      })
-
-	      const chunkNoteTokens = await capMaxOutputTokensForModel({
-	        modelId: parsedModelEffective.canonical,
-	        requested: SUMMARY_LENGTH_TO_TOKENS.medium,
-	      })
-	      const notesResult = await summarizeWithModelId({
-	        modelId: parsedModelEffective.canonical,
-	        prompt: chunkPrompt,
-	        maxOutputTokens: chunkNoteTokens,
-	        timeoutMs,
-	        fetchImpl: trackedFetch,
-	        apiKeys: apiKeysForLlm,
-	      })
-      const notes = notesResult.text
-
-      llmCalls.push({
-        provider: notesResult.provider,
-        model: notesResult.canonicalModelId,
-        usage: notesResult.usage,
-        purpose: 'chunk-notes',
-      })
-
-      chunkNotes.push(notes.trim())
-    }
-
-    writeVerbose(stderr, verbose, 'summarize merge chunk notes', verboseColor)
-    const mergedContent = `Chunk notes (generated from the full input):\n\n${chunkNotes
-      .filter((value) => value.length > 0)
-      .join('\n\n')}`
-
-    const mergedPrompt = buildLinkSummaryPrompt({
-      url: extracted.url,
-      title: extracted.title,
-      siteName: extracted.siteName,
-      description: extracted.description,
-      content: mergedContent,
-      truncated: false,
-      hasTranscript:
-        isYouTube ||
-        (extracted.transcriptSource !== null && extracted.transcriptSource !== 'unavailable'),
-      summaryLength:
-        lengthArg.kind === 'preset' ? lengthArg.preset : { maxCharacters: lengthArg.maxCharacters },
-      shares: [],
-    })
-
-	    if (streamingEnabledForCall) {
-      writeVerbose(
-        stderr,
-        verbose,
-        `summarize stream=on buffered=${shouldBufferSummaryForRender}`,
-        verboseColor
-      )
-	      const streamResult = await streamTextWithModelId({
-	        modelId: parsedModelEffective.canonical,
-	        apiKeys: apiKeysForLlm,
-	        prompt: mergedPrompt,
-	        temperature: 0,
-	        maxOutputTokens: maxOutputTokensForCall,
-	        timeoutMs,
-	        fetchImpl: trackedFetch,
-	      })
-	      let streamed = ''
-	      const liveRenderer = shouldLiveRenderSummary
-	        ? createLiveRenderer({
-	            write: (chunk) => {
-	              clearProgressForStdout()
-	              stdout.write(chunk)
-	            },
-	            width: terminalWidth(stdout, env),
-	            renderFrame: (markdown) =>
-	              renderMarkdownAnsi(markdown, {
-	                width: terminalWidth(stdout, env),
-                wrap: true,
-                color: supportsColor(stdout, env),
-              }),
-          })
-        : null
-	      let lastFrameAtMs = 0
-	      try {
-	        let cleared = false
-	        for await (const delta of streamResult.textStream) {
-	          if (!cleared) {
-	            clearProgressForStdout()
-	            cleared = true
-	          }
-	          streamed += delta
-	          if (shouldStreamSummaryToStdout) {
-	            stdout.write(delta)
-	            continue
-          }
-
-          if (liveRenderer) {
-            const now = Date.now()
-            const due = now - lastFrameAtMs >= 120
-            const hasNewline = delta.includes('\n')
-            if (hasNewline || due) {
-              liveRenderer.render(streamed)
-              lastFrameAtMs = now
-            }
-          }
-        }
-
-        const trimmed = streamed.trim()
-        streamed = trimmed
-        if (liveRenderer) {
-          liveRenderer.render(trimmed)
-          summaryAlreadyPrinted = true
-        }
-      } finally {
-        liveRenderer?.finish()
-      }
-      const usage = await streamResult.usage
-      llmCalls.push({
-        provider: streamResult.provider,
-        model: streamResult.canonicalModelId,
-        usage,
-        purpose: 'summary',
-      })
-      summary = streamed
-      if (shouldStreamSummaryToStdout) {
-        if (!streamed.endsWith('\n')) {
-          stdout.write('\n')
-        }
-        summaryAlreadyPrinted = true
-      }
-    } else {
-	      const mergedResult = await summarizeWithModelId({
-	        modelId: parsedModelEffective.canonical,
-	        prompt: mergedPrompt,
-	        maxOutputTokens: maxOutputTokensForCall,
-	        timeoutMs,
-	        fetchImpl: trackedFetch,
-	        apiKeys: apiKeysForLlm,
-	      })
-      llmCalls.push({
-        provider: mergedResult.provider,
-        model: mergedResult.canonicalModelId,
-        usage: mergedResult.usage,
-        purpose: 'summary',
-      })
-      summary = mergedResult.text
-    }
+    stopProgress()
   }
-
-  summary = summary.trim()
-  if (summary.length === 0) {
-    throw new Error('LLM returned an empty summary')
-  }
-
-	  if (json) {
-	    const finishReport = await buildReport()
-	    const costReport = cost || verbose ? finishReport : null
-	    const payload: JsonOutput = {
-	      input: {
-	        kind: 'url',
-	        url,
-	        timeoutMs,
-	        youtube: youtubeMode,
-	        firecrawl: firecrawlMode,
-        markdown: effectiveMarkdownMode,
-        length:
-          lengthArg.kind === 'preset'
-            ? { kind: 'preset', preset: lengthArg.preset }
-            : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
-        model,
-      },
-      env: {
-        hasXaiKey: Boolean(xaiApiKey),
-        hasOpenAIKey: Boolean(apiKey),
-        hasApifyToken: Boolean(apifyToken),
-        hasFirecrawlKey: firecrawlConfigured,
-        hasGoogleKey: googleConfigured,
-        hasAnthropicKey: anthropicConfigured,
-      },
-      extracted,
-      prompt,
-      llm: {
-        provider: parsedModelEffective.provider,
-        model: parsedModelEffective.canonical,
-        maxCompletionTokens,
-        strategy,
-        chunkCount,
-      },
-      cost: costReport,
-      summary,
-    }
-
-    if (costReport) {
-      writeCostReport(costReport)
-    }
-    stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
-	    writeFinishLine({
-	      stderr,
-	      elapsedMs: Date.now() - runStartedAtMs,
-	      model: parsedModelEffective.canonical,
-	      strategy,
-	      chunkCount,
-	      report: finishReport,
-	      color: verboseColor,
-	    })
-    return
-  }
-
-	    if (!summaryAlreadyPrinted) {
-	      clearProgressForStdout()
-	      const rendered =
-	        (effectiveRenderMode === 'md' || effectiveRenderMode === 'md-live') && isRichTty(stdout)
-	          ? renderMarkdownAnsi(summary, {
-	              width: terminalWidth(stdout, env),
-            wrap: true,
-            color: supportsColor(stdout, env),
-          })
-        : summary
-
-    stdout.write(rendered)
-    if (!rendered.endsWith('\n')) {
-      stdout.write('\n')
-    }
-  }
-
-	  const report = await buildReport()
-	  if (cost || verbose) writeCostReport(report)
-		  writeFinishLine({
-		    stderr,
-		    elapsedMs: Date.now() - runStartedAtMs,
-		    model: parsedModelEffective.canonical,
-		    strategy,
-		    chunkCount,
-		    report,
-		    color: verboseColor,
-		  })
-		} finally {
-		  if (clearProgressBeforeStdout === stopProgress) {
-		    clearProgressBeforeStdout = null
-		  }
-		  stopProgress()
-		}
 }

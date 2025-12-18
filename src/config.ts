@@ -16,11 +16,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export function loadSummarizeConfig({
-  env,
-}: {
-  env: Record<string, string | undefined>
-}): { config: SummarizeConfig | null; path: string | null } {
+export function loadSummarizeConfig({ env }: { env: Record<string, string | undefined> }): {
+  config: SummarizeConfig | null
+  path: string | null
+} {
   const home = env.HOME?.trim() || homedir()
   if (!home) return { config: null, path: null }
   const path = join(home, '.summarize', 'config.json')

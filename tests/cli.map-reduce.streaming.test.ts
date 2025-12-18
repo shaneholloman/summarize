@@ -61,16 +61,18 @@ describe('cli map-reduce streaming', () => {
     })
     ;(stderr as unknown as { isTTY?: boolean }).isTTY = true
 
-    await runCli(['--model', 'openai/gpt-5.2', '--stream', 'on', '--render', 'plain', 'https://example.com'], {
-      env: { OPENAI_API_KEY: 'test' },
-      fetch: fetchMock as unknown as typeof fetch,
-      stdout,
-      stderr,
-    })
+    await runCli(
+      ['--model', 'openai/gpt-5.2', '--stream', 'on', '--render', 'plain', 'https://example.com'],
+      {
+        env: { OPENAI_API_KEY: 'test' },
+        fetch: fetchMock as unknown as typeof fetch,
+        stdout,
+        stderr,
+      }
+    )
 
     expect(stdoutText).toContain('FINAL')
     expect(streamTextMock).toHaveBeenCalledTimes(1)
     expect(generateTextMock).toHaveBeenCalled()
   })
 })
-

@@ -36,7 +36,11 @@ describe('cli json + cost report', () => {
     writeFileSync(
       join(cacheDir, 'litellm-model_prices_and_context_window.json'),
       JSON.stringify({
-        'gpt-5.2': { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002, max_output_tokens: 2048 },
+        'gpt-5.2': {
+          input_cost_per_token: 0.000001,
+          output_cost_per_token: 0.000002,
+          max_output_tokens: 2048,
+        },
       }),
       'utf8'
     )
@@ -49,7 +53,9 @@ describe('cli json + cost report', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.url
       if (url === 'https://example.com') {
-        return htmlResponse('<!doctype html><html><body><article><p>Hello</p></article></body></html>')
+        return htmlResponse(
+          '<!doctype html><html><body><article><p>Hello</p></article></body></html>'
+        )
       }
       throw new Error(`Unexpected fetch call: ${url}`)
     })
@@ -85,4 +91,3 @@ describe('cli json + cost report', () => {
     expect(stderrText).toContain('cost total estimated=')
   })
 })
-

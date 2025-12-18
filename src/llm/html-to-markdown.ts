@@ -68,15 +68,15 @@ export function createHtmlToMarkdownConverter({
       html: trimmedHtml,
     })
 
-	    const result = await generateTextWithModelId({
-	      modelId,
-	      apiKeys: { xaiApiKey, googleApiKey, openaiApiKey, anthropicApiKey },
-	      system,
-	      prompt,
-	      temperature: 0,
-	      timeoutMs,
-	      fetchImpl,
-	    })
+    const result = await generateTextWithModelId({
+      modelId,
+      apiKeys: { xaiApiKey, googleApiKey, openaiApiKey, anthropicApiKey },
+      system,
+      prompt,
+      temperature: 0,
+      timeoutMs,
+      fetchImpl,
+    })
     onUsage?.({ model: result.canonicalModelId, provider: result.provider, usage: result.usage })
     return result.text
   }

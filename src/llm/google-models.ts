@@ -115,7 +115,9 @@ export async function resolveGoogleModelForUsage({
   }
 
   const exact = byId.get(requested)
-  const strippedPreview = requested.endsWith('-preview') ? requested.slice(0, -'-preview'.length) : null
+  const strippedPreview = requested.endsWith('-preview')
+    ? requested.slice(0, -'-preview'.length)
+    : null
   const noPreview = strippedPreview ? byId.get(strippedPreview) : null
 
   const candidate = exact ?? noPreview
@@ -130,7 +132,11 @@ export async function resolveGoogleModelForUsage({
         note: `Resolved ${requestedModelId} → ${normalizeModelId(candidate.name)} via ListModels`,
       }
     }
-    return { resolvedModelId: normalizeModelId(candidate.name), supportedMethods: methods, note: null }
+    return {
+      resolvedModelId: normalizeModelId(candidate.name),
+      supportedMethods: methods,
+      note: null,
+    }
   }
 
   const suggestions = pickSuggestions(models, 5)

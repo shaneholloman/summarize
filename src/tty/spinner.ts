@@ -8,7 +8,12 @@ export function startSpinner({
   text: string
   enabled: boolean
   stream: NodeJS.WritableStream
-}): { stop: () => void; clear: () => void; stopAndClear: () => void; setText: (next: string) => void } {
+}): {
+  stop: () => void
+  clear: () => void
+  stopAndClear: () => void
+  setText: (next: string) => void
+} {
   if (!enabled) {
     return { stop: () => {}, clear: () => {}, stopAndClear: () => {}, setText: () => {} }
   }

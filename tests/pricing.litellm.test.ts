@@ -47,7 +47,9 @@ describe('LiteLLM pricing catalog', () => {
         output_cost_per_token: 0.00000051,
       },
     }
-    expect(resolveLiteLlmPricingForModelId(catalogNoPrefix, 'xai/grok-4-fast-non-reasoning')).toEqual({
+    expect(
+      resolveLiteLlmPricingForModelId(catalogNoPrefix, 'xai/grok-4-fast-non-reasoning')
+    ).toEqual({
       inputUsdPerToken: 0.00000021,
       outputUsdPerToken: 0.00000051,
     })
@@ -70,8 +72,12 @@ describe('LiteLLM pricing catalog', () => {
 
     expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'openai/gpt-5.2')).toBe(16384)
     expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'anthropic/claude-opus-4-5')).toBe(8192)
-    expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'google/gemini-3-flash-preview')).toBe(32768)
-    expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'xai/grok-4-fast-non-reasoning')).toBe(4096)
+    expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'google/gemini-3-flash-preview')).toBe(
+      32768
+    )
+    expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'xai/grok-4-fast-non-reasoning')).toBe(
+      4096
+    )
   })
 
   it('does nothing without HOME (no cache, no network)', async () => {

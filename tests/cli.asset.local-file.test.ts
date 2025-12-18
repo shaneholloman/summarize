@@ -80,7 +80,17 @@ describe('cli asset inputs (local file)', () => {
     const stderr = collectStream()
 
     await runCli(
-      ['--model', 'openai/gpt-5.2', '--timeout', '2s', '--stream', 'on', '--render', 'plain', pdfPath],
+      [
+        '--model',
+        'openai/gpt-5.2',
+        '--timeout',
+        '2s',
+        '--stream',
+        'on',
+        '--render',
+        'plain',
+        pdfPath,
+      ],
       {
         env: { HOME: root, OPENAI_API_KEY: 'test' },
         fetch: vi.fn(async () => {

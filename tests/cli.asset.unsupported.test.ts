@@ -18,8 +18,12 @@ function createFailingStream(): AsyncIterable<string> {
   const err = new Error("'file part media type application/pdf' functionality not supported.")
   ;(err as unknown as { name?: string }).name = 'UnsupportedFunctionalityError'
   return {
-    async *[Symbol.asyncIterator]() {
-      throw err
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          throw err
+        },
+      }
     },
   }
 }

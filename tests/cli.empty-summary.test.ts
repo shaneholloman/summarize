@@ -28,7 +28,9 @@ describe('cli empty summary handling', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.url
       if (url === 'https://example.com') {
-        return htmlResponse('<!doctype html><html><body><article><p>Hello</p></article></body></html>')
+        return htmlResponse(
+          '<!doctype html><html><body><article><p>Hello</p></article></body></html>'
+        )
       }
       throw new Error(`Unexpected fetch call: ${url}`)
     })
@@ -56,4 +58,3 @@ describe('cli empty summary handling', () => {
     ).rejects.toThrow(/empty summary/i)
   })
 })
-

@@ -6,9 +6,7 @@ import type { FilePart, ImagePart, ModelMessage } from 'ai'
 import { fileTypeFromBuffer } from 'file-type'
 import mime from 'mime'
 
-export type InputTarget =
-  | { kind: 'url'; url: string }
-  | { kind: 'file'; filePath: string }
+export type InputTarget = { kind: 'url'; url: string } | { kind: 'file'; filePath: string }
 
 export type UrlKind = { kind: 'website' } | { kind: 'asset' }
 
@@ -207,7 +205,9 @@ export async function loadRemoteAsset({
 
     const arrayBuffer = await res.arrayBuffer()
     if (arrayBuffer.byteLength > maxBytes) {
-      throw new Error(`Remote file too large (${arrayBuffer.byteLength} bytes). Limit is ${maxBytes} bytes.`)
+      throw new Error(
+        `Remote file too large (${arrayBuffer.byteLength} bytes). Limit is ${maxBytes} bytes.`
+      )
     }
 
     const bytes = new Uint8Array(arrayBuffer)

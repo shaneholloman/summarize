@@ -76,4 +76,3 @@ export function startOscProgress(options: OscProgressOptions = {}): () => void {
     send(0, 0)
   }
 }
-

@@ -51,7 +51,10 @@ describe('cli google streaming fallback', () => {
     writeFileSync(
       join(cacheDir, 'litellm-model_prices_and_context_window.json'),
       JSON.stringify({
-        'gemini-3-flash-preview': { input_cost_per_token: 0.0000002, output_cost_per_token: 0.0000008 },
+        'gemini-3-flash-preview': {
+          input_cost_per_token: 0.0000002,
+          output_cost_per_token: 0.0000008,
+        },
       }),
       'utf8'
     )
@@ -65,7 +68,8 @@ describe('cli google streaming fallback', () => {
     writeFileSync(pdfPath, Buffer.from('%PDF-1.7\n%âãÏÓ\n1 0 obj\n<<>>\nendobj\n', 'utf8'))
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.startsWith('https://generativelanguage.googleapis.com/v1beta/models?key=')) {
         expect(init?.method ?? 'GET').toBe('GET')
         return new Response(
@@ -102,4 +106,3 @@ describe('cli google streaming fallback', () => {
     expect(streamTextMock).toHaveBeenCalledTimes(0)
   })
 })
-

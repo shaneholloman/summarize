@@ -1,10 +1,10 @@
 import type { SummaryLengthTarget } from './link-summary.js'
-import { estimateMaxCompletionTokensForCharacters, pickSummaryLengthForCharacters } from './link-summary.js'
+import {
+  estimateMaxCompletionTokensForCharacters,
+  pickSummaryLengthForCharacters,
+} from './link-summary.js'
 
-const SUMMARY_LENGTH_TO_TOKENS: Record<
-  'short' | 'medium' | 'long' | 'xl' | 'xxl',
-  number
-> = {
+const SUMMARY_LENGTH_TO_TOKENS: Record<'short' | 'medium' | 'long' | 'xl' | 'xxl', number> = {
   short: 768,
   medium: 1536,
   long: 3072,

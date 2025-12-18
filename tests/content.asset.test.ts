@@ -14,7 +14,9 @@ describe('asset loaders', () => {
 
     const bigPath = join(root, 'big.bin')
     writeFileSync(bigPath, Buffer.alloc(10, 0))
-    await expect(loadLocalAsset({ filePath: bigPath, maxBytes: 5 })).rejects.toThrow(/File too large/i)
+    await expect(loadLocalAsset({ filePath: bigPath, maxBytes: 5 })).rejects.toThrow(
+      /File too large/i
+    )
   })
 
   it('rejects remote non-200 and oversize downloads', async () => {

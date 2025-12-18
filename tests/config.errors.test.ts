@@ -23,8 +23,6 @@ describe('config error handling', () => {
     mkdirSync(join(root, '.summarize'), { recursive: true })
     writeFileSync(configPath, JSON.stringify(['nope']), 'utf8')
 
-    expect(() => loadSummarizeConfig({ env: { HOME: root } })).toThrow(
-      /expected an object/
-    )
+    expect(() => loadSummarizeConfig({ env: { HOME: root } })).toThrow(/expected an object/)
   })
 })

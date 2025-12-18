@@ -1,5 +1,5 @@
-import { parseGatewayStyleModelId } from './model-id.js'
 import type { ModelMessage } from 'ai'
+import { parseGatewayStyleModelId } from './model-id.js'
 
 export type LlmApiKeys = {
   xaiApiKey: string | null
@@ -263,14 +263,14 @@ export async function streamTextWithModelId({
     if (!apiKey) throw new Error('Missing OPENAI_API_KEY for openai/... model')
     const { createOpenAI } = await import('@ai-sdk/openai')
     const openai = createOpenAI({ apiKey, fetch: fetchImpl })
-	    const result = streamText({
-	      model: openai(parsed.model),
-	      system,
-	      ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
-	      temperature,
-	      ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
-	      abortSignal: controller.signal,
-	    })
+    const result = streamText({
+      model: openai(parsed.model),
+      system,
+      ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
+      temperature,
+      ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+      abortSignal: controller.signal,
+    })
     return {
       textStream: result.textStream,
       canonicalModelId: parsed.canonical,

@@ -33,19 +33,19 @@ describe('HTML→Markdown converter', async () => {
     })
 
     expect(result).toBe('# Hello')
-	    expect(generateTextWithModelIdMock).toHaveBeenCalledTimes(1)
-	    const args = generateTextWithModelIdMock.mock.calls[0]?.[0] as {
-	      system?: string
-	      prompt: string
-	      temperature: number
-	      modelId: string
-	    }
-	    expect(args.modelId).toBe('openai/gpt-5.2')
-	    expect(args.temperature).toBe(0)
-	    expect(args.system).toContain('You convert HTML')
-	    expect(args.prompt).toContain('URL: https://example.com')
-	    expect(args.prompt).toContain('<h1>Hello</h1>')
-	  })
+    expect(generateTextWithModelIdMock).toHaveBeenCalledTimes(1)
+    const args = generateTextWithModelIdMock.mock.calls[0]?.[0] as {
+      system?: string
+      prompt: string
+      temperature: number
+      modelId: string
+    }
+    expect(args.modelId).toBe('openai/gpt-5.2')
+    expect(args.temperature).toBe(0)
+    expect(args.system).toContain('You convert HTML')
+    expect(args.prompt).toContain('URL: https://example.com')
+    expect(args.prompt).toContain('<h1>Hello</h1>')
+  })
 
   it('truncates very large HTML inputs', async () => {
     generateTextWithModelIdMock.mockClear()
