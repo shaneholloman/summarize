@@ -1,6 +1,8 @@
 import { Command, CommanderError } from 'commander'
 import { loadSummarizeConfig } from './config.js'
 import { createLinkPreviewClient } from './content/index.js'
+import { buildRunCostReport, parsePricingJson } from './costs.js'
+import type { LlmCall, PricingConfig } from './costs.js'
 import { createFirecrawlScraper } from './firecrawl.js'
 import {
   parseDurationMs,
@@ -51,6 +53,7 @@ type JsonOutput = {
     strategy: 'single' | 'map-reduce'
     chunkCount: number
   } | null
+  cost?: ReturnType<typeof buildRunCostReport> | null
   summary: string | null
 }
 
@@ -105,6 +108,7 @@ function buildProgram() {
     .option('--extract-only', 'Print extracted content and exit', false)
     .option('--json', 'Output structured JSON', false)
     .option('--verbose', 'Print detailed progress info to stderr', false)
+    .option('--cost', 'Print token usage and estimated costs to stderr', false)
     .allowExcessArguments(false)
 }
 
@@ -176,7 +180,12 @@ async function summarizeWithModelId({
   timeoutMs: number
   fetchImpl: typeof fetch
   apiKeys: { xaiApiKey: string | null; openaiApiKey: string | null; googleApiKey: string | null }
-}): Promise<{ text: string; provider: 'xai' | 'openai' | 'google'; canonicalModelId: string }> {
+}): Promise<{
+  text: string
+  provider: 'xai' | 'openai' | 'google'
+  canonicalModelId: string
+  usage: Awaited<ReturnType<typeof generateTextWithModelId>>['usage']
+}> {
   const result = await generateTextWithModelId({
     modelId,
     apiKeys,
@@ -186,7 +195,12 @@ async function summarizeWithModelId({
     timeoutMs,
     fetchImpl,
   })
-  return { text: result.text, provider: result.provider, canonicalModelId: result.canonicalModelId }
+  return {
+    text: result.text,
+    provider: result.provider,
+    canonicalModelId: result.canonicalModelId,
+    usage: result.usage,
+  }
 }
 
 function splitTextIntoChunks(input: string, maxCharacters: number): string[] {
@@ -323,6 +337,7 @@ export async function runCli(
   const extractOnly = Boolean(program.opts().extractOnly)
   const json = Boolean(program.opts().json)
   const verbose = Boolean(program.opts().verbose)
+  const cost = Boolean(program.opts().cost)
   const markdownMode = parseMarkdownMode(program.opts().markdown as string)
   const raw = Boolean(program.opts().raw)
 
@@ -351,7 +366,13 @@ export async function runCli(
   const apifyToken = typeof env.APIFY_API_TOKEN === 'string' ? env.APIFY_API_TOKEN : null
   const firecrawlKey = typeof env.FIRECRAWL_API_KEY === 'string' ? env.FIRECRAWL_API_KEY : null
   const googleKeyRaw =
-    typeof env.GOOGLE_GENERATIVE_AI_API_KEY === 'string' ? env.GOOGLE_GENERATIVE_AI_API_KEY : null
+    typeof env.GOOGLE_GENERATIVE_AI_API_KEY === 'string'
+      ? env.GOOGLE_GENERATIVE_AI_API_KEY
+      : typeof env.GEMINI_API_KEY === 'string'
+        ? env.GEMINI_API_KEY
+        : typeof env.GOOGLE_API_KEY === 'string'
+          ? env.GOOGLE_API_KEY
+          : null
 
   const firecrawlApiKey = firecrawlKey && firecrawlKey.trim().length > 0 ? firecrawlKey : null
   const firecrawlConfigured = firecrawlApiKey !== null
@@ -359,6 +380,47 @@ export async function runCli(
   const googleApiKey = googleKeyRaw?.trim() ?? null
   const googleConfigured = typeof googleApiKey === 'string' && googleApiKey.length > 0
   const xaiConfigured = typeof xaiApiKey === 'string' && xaiApiKey.length > 0
+
+  const pricing = (() => {
+    const fromConfig = config?.pricing ?? null
+    const fromEnvRaw =
+      typeof env.SUMMARIZE_PRICING_JSON === 'string' ? env.SUMMARIZE_PRICING_JSON : null
+    if (!fromEnvRaw || fromEnvRaw.trim().length === 0) {
+      return fromConfig
+    }
+    const fromEnv = parsePricingJson(fromEnvRaw)
+    return {
+      llm: { ...(fromConfig?.llm ?? {}), ...(fromEnv.llm ?? {}) },
+      firecrawlUsdPerRequest:
+        fromEnv.firecrawlUsdPerRequest ?? fromConfig?.firecrawlUsdPerRequest,
+      apifyUsdPerRequest: fromEnv.apifyUsdPerRequest ?? fromConfig?.apifyUsdPerRequest,
+    } satisfies PricingConfig
+  })()
+
+  const llmCalls: LlmCall[] = []
+  let firecrawlRequests = 0
+  let apifyRequests = 0
+
+  const trackedFetch: typeof fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url
+    let hostname: string | null = null
+    try {
+      hostname = new URL(url).hostname.toLowerCase()
+    } catch {
+      hostname = null
+    }
+    if (hostname === 'api.firecrawl.dev') {
+      firecrawlRequests += 1
+    } else if (hostname === 'api.apify.com') {
+      apifyRequests += 1
+    }
+    return fetch(input as RequestInfo, init)
+  }
 
   const resolvedDefaultModel = (() => {
     if (typeof env.SUMMARIZE_MODEL === 'string' && env.SUMMARIZE_MODEL.trim().length > 0) {
@@ -374,6 +436,31 @@ export async function runCli(
   const parsedModelForLlm = parseGatewayStyleModelId(model)
 
   const verboseColor = supportsColor(stderr, env)
+  const writeCostReport = (report: ReturnType<typeof buildRunCostReport>) => {
+    const fmtUsd = (value: number | null) =>
+      typeof value === 'number' && Number.isFinite(value) ? `$${value.toFixed(4)}` : 'unknown'
+
+    for (const row of report.llm) {
+      stderr.write(
+        `cost llm provider=${row.provider} model=${row.model} calls=${row.calls} promptTokens=${
+          row.promptTokens ?? 'unknown'
+        } completionTokens=${row.completionTokens ?? 'unknown'} totalTokens=${
+          row.totalTokens ?? 'unknown'
+        } estimated=${fmtUsd(row.estimatedUsd)}\n`
+      )
+    }
+    stderr.write(
+      `cost firecrawl requests=${report.services.firecrawl.requests} estimated=${fmtUsd(
+        report.services.firecrawl.estimatedUsd
+      )}\n`
+    )
+    stderr.write(
+      `cost apify requests=${report.services.apify.requests} estimated=${fmtUsd(
+        report.services.apify.estimatedUsd
+      )}\n`
+    )
+    stderr.write(`cost total estimated=${fmtUsd(report.totalEstimatedUsd)}\n`)
+  }
 
   const firecrawlMode = (() => {
     if (raw) {
@@ -443,7 +530,7 @@ export async function runCli(
 
   const scrapeWithFirecrawl =
     firecrawlConfigured && firecrawlMode !== 'off'
-      ? createFirecrawlScraper({ apiKey: firecrawlApiKey, fetchImpl: fetch })
+      ? createFirecrawlScraper({ apiKey: firecrawlApiKey, fetchImpl: trackedFetch })
       : null
 
   const convertHtmlToMarkdown =
@@ -453,7 +540,10 @@ export async function runCli(
           xaiApiKey: xaiConfigured ? xaiApiKey : null,
           googleApiKey: googleConfigured ? googleApiKey : null,
           openaiApiKey: apiKey,
-          fetchImpl: fetch,
+          fetchImpl: trackedFetch,
+          onUsage: ({ model: usedModel, provider, usage }) => {
+            llmCalls.push({ provider, model: usedModel, usage, purpose: 'markdown' })
+          },
         })
       : null
 
@@ -461,7 +551,7 @@ export async function runCli(
     apifyApiToken: apifyToken,
     scrapeWithFirecrawl,
     convertHtmlToMarkdown,
-    fetch,
+    fetch: trackedFetch,
   })
 
   writeVerbose(stderr, verbose, 'extract start', verboseColor)
@@ -536,6 +626,10 @@ export async function runCli(
 
   if (extractOnly) {
     if (json) {
+      const costReport =
+        cost || verbose
+          ? buildRunCostReport({ llmCalls, firecrawlRequests, apifyRequests, pricing })
+          : null
       const payload: JsonOutput = {
         input: {
           url,
@@ -559,12 +653,16 @@ export async function runCli(
         extracted,
         prompt,
         llm: null,
+        cost: costReport,
         summary: null,
       }
       stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
       return
     }
 
+    if (cost || verbose) {
+      writeCostReport(buildRunCostReport({ llmCalls, firecrawlRequests, apifyRequests, pricing }))
+    }
     stdout.write(`${extracted.content}\n`)
     return
   }
@@ -573,6 +671,10 @@ export async function runCli(
     writeVerbose(stderr, verbose, 'mode prompt-only', verboseColor)
 
     if (json) {
+      const costReport =
+        cost || verbose
+          ? buildRunCostReport({ llmCalls, firecrawlRequests, apifyRequests, pricing })
+          : null
       const payload: JsonOutput = {
         input: {
           url,
@@ -596,12 +698,16 @@ export async function runCli(
         extracted,
         prompt,
         llm: null,
+        cost: costReport,
         summary: null,
       }
       stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
       return
     }
 
+    if (cost || verbose) {
+      writeCostReport(buildRunCostReport({ llmCalls, firecrawlRequests, apifyRequests, pricing }))
+    }
     stdout.write(`${prompt}\n`)
     return
   }
@@ -654,8 +760,14 @@ export async function runCli(
       prompt,
       maxOutputTokens: maxCompletionTokens,
       timeoutMs,
-      fetchImpl: fetch,
+      fetchImpl: trackedFetch,
       apiKeys: apiKeysForLlm,
+    })
+    llmCalls.push({
+      provider: result.provider,
+      model: result.canonicalModelId,
+      usage: result.usage,
+      purpose: 'summary',
     })
     summary = result.text
   } else {
@@ -690,10 +802,17 @@ export async function runCli(
         prompt: chunkPrompt,
         maxOutputTokens: SUMMARY_LENGTH_TO_TOKENS.medium,
         timeoutMs,
-        fetchImpl: fetch,
+        fetchImpl: trackedFetch,
         apiKeys: apiKeysForLlm,
       })
       const notes = notesResult.text
+
+      llmCalls.push({
+        provider: notesResult.provider,
+        model: notesResult.canonicalModelId,
+        usage: notesResult.usage,
+        purpose: 'chunk-notes',
+      })
 
       chunkNotes.push(notes.trim())
     }
@@ -723,8 +842,14 @@ export async function runCli(
       prompt: mergedPrompt,
       maxOutputTokens: maxCompletionTokens,
       timeoutMs,
-      fetchImpl: fetch,
+      fetchImpl: trackedFetch,
       apiKeys: apiKeysForLlm,
+    })
+    llmCalls.push({
+      provider: mergedResult.provider,
+      model: mergedResult.canonicalModelId,
+      usage: mergedResult.usage,
+      purpose: 'summary',
     })
     summary = mergedResult.text
   }
@@ -735,6 +860,10 @@ export async function runCli(
   }
 
   if (json) {
+    const costReport =
+      cost || verbose
+        ? buildRunCostReport({ llmCalls, firecrawlRequests, apifyRequests, pricing })
+        : null
     const payload: JsonOutput = {
       input: {
         url,
@@ -764,6 +893,7 @@ export async function runCli(
         strategy,
         chunkCount,
       },
+      cost: costReport,
       summary,
     }
 
@@ -771,5 +901,8 @@ export async function runCli(
     return
   }
 
+  if (cost || verbose) {
+    writeCostReport(buildRunCostReport({ llmCalls, firecrawlRequests, apifyRequests, pricing }))
+  }
   stdout.write(`${summary}\n`)
 }

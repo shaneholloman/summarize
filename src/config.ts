@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+import type { PricingConfig } from './costs.js'
+import { parsePricingJson } from './costs.js'
+
 export type SummarizeConfig = {
   /**
    * Gateway-style model id, e.g.:
@@ -10,6 +13,11 @@ export type SummarizeConfig = {
    * - google/gemini-2.0-flash
    */
   model?: string
+
+  /**
+   * Optional pricing configuration used for `--cost` / `--verbose` cost output.
+   */
+  pricing?: PricingConfig
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -58,5 +66,9 @@ export function loadSummarizeConfig({
   }
 
   const model = typeof parsed.model === 'string' ? parsed.model : undefined
-  return { config: { model }, path }
+  const pricing =
+    typeof parsed.pricing === 'object' && parsed.pricing !== null
+      ? parsePricingJson(JSON.stringify(parsed.pricing))
+      : undefined
+  return { config: { model, pricing }, path }
 }

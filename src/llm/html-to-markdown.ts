@@ -1,5 +1,6 @@
 import type { ConvertHtmlToMarkdown } from '../content/link-preview/deps.js'
 import { generateTextWithModelId } from './generate-text.js'
+import type { LlmTokenUsage } from './generate-text.js'
 
 const MAX_HTML_INPUT_CHARACTERS = 200_000
 
@@ -42,12 +43,14 @@ export function createHtmlToMarkdownConverter({
   googleApiKey,
   openaiApiKey,
   fetchImpl,
+  onUsage,
 }: {
   modelId: string
   xaiApiKey: string | null
   googleApiKey: string | null
   openaiApiKey: string | null
   fetchImpl: typeof fetch
+  onUsage?: (usage: { model: string; provider: 'xai' | 'openai' | 'google'; usage: LlmTokenUsage | null }) => void
 }): ConvertHtmlToMarkdown {
   return async ({ url, html, title, siteName, timeoutMs }) => {
     const trimmedHtml =
@@ -69,6 +72,7 @@ export function createHtmlToMarkdownConverter({
       timeoutMs,
       fetchImpl,
     })
+    onUsage?.({ model: result.canonicalModelId, provider: result.provider, usage: result.usage })
     return result.text
   }
 }

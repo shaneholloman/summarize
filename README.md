@@ -117,6 +117,7 @@ summarize "https://example.com" --json
 - `--extract-only`: print extracted content and exit (never calls an LLM)
 - `--json`: emit a single JSON object instead of plain text
 - `--verbose`: print detailed progress + extraction diagnostics to stderr
+- `--cost`: print token usage + estimated costs to stderr (also included in `--json` output when enabled)
 
 ## Required services & API keys
 
@@ -127,8 +128,32 @@ By default the CLI uses `xai/grok-4-fast-non-reasoning`, so you’ll want `XAI_A
 - `XAI_API_KEY` (required for `xai/...` models)
 - `OPENAI_API_KEY` (required for `openai/...` models)
 - `GOOGLE_GENERATIVE_AI_API_KEY` (required for `google/...` models)
+- `GEMINI_API_KEY` (alias for `GOOGLE_GENERATIVE_AI_API_KEY`)
 - `SUMMARIZE_MODEL` (optional; overrides default model selection)
 - `SUMMARIZE_CONFIG` (optional; path to config file)
+
+### Cost reporting (optional)
+
+`--cost` prints token usage plus *estimated* costs for this run. We can always count requests (Firecrawl/Apify) and tokens (LLMs), but we cannot reliably infer USD without prices.
+
+Provide prices via either:
+
+- `SUMMARIZE_PRICING_JSON` (JSON string), or
+- `~/.config/summarize/config.json`:
+
+```json
+{
+  "pricing": {
+    "llm": {
+      "openai/gpt-5.2": { "inputUsdPer1MTokens": 0, "outputUsdPer1MTokens": 0 },
+      "xai/grok-4-fast-non-reasoning": { "inputUsdPer1MTokens": 0, "outputUsdPer1MTokens": 0 },
+      "google/gemini-3-flash-preview": { "inputUsdPer1MTokens": 0, "outputUsdPer1MTokens": 0 }
+    },
+    "firecrawlUsdPerRequest": 0,
+    "apifyUsdPerRequest": 0
+  }
+}
+```
 
 ### Apify (optional YouTube fallback)
 

@@ -19,8 +19,9 @@ Use this for non-YouTube URLs.
 - `--extract-only` (print extracted content, no LLM call)
 - `--json` (emit a single JSON object)
 - `--verbose` (progress + which extractor was used)
+- `--cost` (token usage + estimated costs)
 
 ## API keys
 
 - Optional: `FIRECRAWL_API_KEY` (for the Firecrawl fallback / preferred Markdown output)
-- Optional: `XAI_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` (required only when `--markdown llm` is used, or when `--markdown auto` falls back to LLM conversion)
+- Optional: `XAI_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `GEMINI_API_KEY` (required only when `--markdown llm` is used, or when `--markdown auto` falls back to LLM conversion)

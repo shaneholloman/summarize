@@ -6,6 +6,37 @@ export type LlmApiKeys = {
   googleApiKey: string | null
 }
 
+export type LlmTokenUsage = {
+  promptTokens: number | null
+  completionTokens: number | null
+  totalTokens: number | null
+}
+
+function normalizeTokenUsage(raw: unknown): LlmTokenUsage | null {
+  if (!raw || typeof raw !== 'object') return null
+  const usage = raw as Record<string, unknown>
+
+  const promptTokens =
+    typeof usage.promptTokens === 'number' && Number.isFinite(usage.promptTokens)
+      ? usage.promptTokens
+      : typeof usage.inputTokens === 'number' && Number.isFinite(usage.inputTokens)
+        ? usage.inputTokens
+      : null
+  const completionTokens =
+    typeof usage.completionTokens === 'number' && Number.isFinite(usage.completionTokens)
+      ? usage.completionTokens
+      : typeof usage.outputTokens === 'number' && Number.isFinite(usage.outputTokens)
+        ? usage.outputTokens
+      : null
+  const totalTokens =
+    typeof usage.totalTokens === 'number' && Number.isFinite(usage.totalTokens) ? usage.totalTokens : null
+
+  if (promptTokens === null && completionTokens === null && totalTokens === null) {
+    return null
+  }
+  return { promptTokens, completionTokens, totalTokens }
+}
+
 export async function generateTextWithModelId({
   modelId,
   apiKeys,
@@ -24,7 +55,12 @@ export async function generateTextWithModelId({
   timeoutMs: number
   temperature: number
   fetchImpl: typeof fetch
-}): Promise<{ text: string; canonicalModelId: string; provider: 'xai' | 'openai' | 'google' }> {
+}): Promise<{
+  text: string
+  canonicalModelId: string
+  provider: 'xai' | 'openai' | 'google'
+  usage: LlmTokenUsage | null
+}> {
   const parsed = parseGatewayStyleModelId(modelId)
 
   const controller = new AbortController()
@@ -46,7 +82,12 @@ export async function generateTextWithModelId({
         maxOutputTokens,
         abortSignal: controller.signal,
       })
-      return { text: result.text, canonicalModelId: parsed.canonical, provider: parsed.provider }
+      return {
+        text: result.text,
+        canonicalModelId: parsed.canonical,
+        provider: parsed.provider,
+        usage: normalizeTokenUsage((result as unknown as { usage?: unknown }).usage),
+      }
     }
 
     if (parsed.provider === 'google') {
@@ -62,7 +103,12 @@ export async function generateTextWithModelId({
         maxOutputTokens,
         abortSignal: controller.signal,
       })
-      return { text: result.text, canonicalModelId: parsed.canonical, provider: parsed.provider }
+      return {
+        text: result.text,
+        canonicalModelId: parsed.canonical,
+        provider: parsed.provider,
+        usage: normalizeTokenUsage((result as unknown as { usage?: unknown }).usage),
+      }
     }
 
     const apiKey = apiKeys.openaiApiKey
@@ -77,7 +123,12 @@ export async function generateTextWithModelId({
       maxOutputTokens,
       abortSignal: controller.signal,
     })
-    return { text: result.text, canonicalModelId: parsed.canonical, provider: parsed.provider }
+    return {
+      text: result.text,
+      canonicalModelId: parsed.canonical,
+      provider: parsed.provider,
+      usage: normalizeTokenUsage((result as unknown as { usage?: unknown }).usage),
+    }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('LLM request timed out')
