@@ -28,7 +28,7 @@ describe('cli missing API key errors', () => {
     ).rejects.toThrow(/Missing OPENAI_API_KEY/)
   })
 
-  it('errors when --model google/... is set without GOOGLE_GENERATIVE_AI_API_KEY', async () => {
+  it('errors when --model google/... is set without GEMINI_API_KEY', async () => {
     const html = `<!doctype html><html><head><title>Ok</title></head><body><article><p>${'A'.repeat(
       260
     )}</p></article></body></html>`
@@ -40,7 +40,7 @@ describe('cli missing API key errors', () => {
         stdout: noopStream(),
         stderr: noopStream(),
       })
-    ).rejects.toThrow(/Missing GOOGLE_GENERATIVE_AI_API_KEY/)
+    ).rejects.toThrow(/Missing GEMINI_API_KEY/)
   })
 
   it('errors when --model anthropic/... is set without ANTHROPIC_API_KEY', async () => {
