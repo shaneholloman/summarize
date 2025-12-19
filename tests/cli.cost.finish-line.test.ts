@@ -123,7 +123,8 @@ describe('cli finish line + cost formatting', () => {
         'auto',
         '--render',
         'plain',
-        '--cost',
+        '--metrics',
+        'detailed',
         'https://example.com',
       ],
       {
@@ -215,7 +216,8 @@ describe('cli finish line + cost formatting', () => {
         'auto',
         '--render',
         'plain',
-        '--cost',
+        '--metrics',
+        'detailed',
         'https://example.com',
       ],
       {

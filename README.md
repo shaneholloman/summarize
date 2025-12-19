@@ -87,10 +87,10 @@ npx -y @steipete/summarize <input> [flags]
 - `--length short|medium|long|xl|xxl|<chars>`
 - `--stream auto|on|off`: stream LLM output (`auto` = TTY only; disabled in `--json` mode)
 - `--render auto|md-live|md|plain`: Markdown rendering (`auto` = best default for TTY)
-- `--extract-only`: print extracted content (no LLM call) — only for URLs
-- `--json`: machine-readable output with diagnostics, prompt, and optional summary
+- `--extract-only`: print extracted content and exit (no summary) — only for URLs
+- `--json`: machine-readable output with diagnostics, prompt, `metrics`, and optional summary
 - `--verbose`: debug/diagnostics on stderr
-- `--cost`: detailed token + cost breakdown on stderr
+- `--metrics off|on|detailed`: metrics output (default `on`; `detailed` prints a breakdown to stderr)
 
 ## Website extraction (Firecrawl + Markdown)
 
@@ -98,7 +98,7 @@ Non-YouTube URLs go through a “fetch → extract” pipeline. When the direct 
 
 - `--firecrawl off|auto|always` (default `auto`)
 - `--markdown off|auto|llm` (default `auto`; only affects `--extract-only` for non-YouTube URLs)
-- `--raw`: disables Firecrawl + LLM Markdown conversion (shorthand for `--firecrawl off --markdown off`)
+- Raw mode: use `--firecrawl off --markdown off` (there is no `--raw` flag).
 
 ## YouTube transcripts (Apify fallback)
 
@@ -134,8 +134,8 @@ Set the key matching your chosen `--model`:
 - `OPENAI_API_KEY` (for `openai/...`)
 - `ANTHROPIC_API_KEY` (for `anthropic/...`)
 - `XAI_API_KEY` (for `xai/...`)
-- `GOOGLE_GENERATIVE_AI_API_KEY` (for `google/...`)  
-  - also accepts `GEMINI_API_KEY` and `GOOGLE_API_KEY` as aliases
+- `GEMINI_API_KEY` (for `google/...`)  
+  - also accepts `GOOGLE_GENERATIVE_AI_API_KEY` and `GOOGLE_API_KEY` as aliases
 
 Optional services:
 
@@ -144,7 +144,7 @@ Optional services:
 
 ## Pricing + cost reporting
 
-`--cost` and the final “Finished in …” line use the LiteLLM model catalog for pricing and model limits:
+`--metrics` and the final “Finished in …” line use the LiteLLM model catalog for pricing and model limits:
 
 - Downloaded from: `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json`
 - Cached at: `~/.summarize/cache/`

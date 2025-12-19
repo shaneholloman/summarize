@@ -5,6 +5,7 @@ export type FirecrawlMode = 'off' | 'auto' | 'always'
 export type MarkdownMode = 'off' | 'auto' | 'llm'
 export type StreamMode = 'auto' | 'on' | 'off'
 export type RenderMode = 'auto' | 'md' | 'md-live' | 'plain'
+export type MetricsMode = 'off' | 'on' | 'detailed'
 
 export type LengthArg =
   | { kind: 'preset'; preset: SummaryLength }
@@ -45,6 +46,14 @@ export function parseRenderMode(raw: string): RenderMode {
   if (normalized === 'md-live' || normalized === 'live' || normalized === 'mdlive') return 'md-live'
   if (normalized === 'md' || normalized === 'markdown') return 'md'
   throw new Error(`Unsupported --render: ${raw}`)
+}
+
+export function parseMetricsMode(raw: string): MetricsMode {
+  const normalized = raw.trim().toLowerCase()
+  if (normalized === 'off' || normalized === 'on' || normalized === 'detailed') {
+    return normalized as MetricsMode
+  }
+  throw new Error(`Unsupported --metrics: ${raw}`)
 }
 
 export function parseDurationMs(raw: string): number {

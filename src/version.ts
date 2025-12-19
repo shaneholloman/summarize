@@ -2,8 +2,28 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export function resolvePackageVersion(importMetaUrl: string): string {
-  const startDir = path.dirname(fileURLToPath(importMetaUrl))
+declare const __dirname: string | undefined
+
+export function resolvePackageVersion(importMetaUrl?: string): string {
+  const injected =
+    typeof process !== 'undefined' && typeof process.env.SUMMARIZE_VERSION === 'string'
+      ? process.env.SUMMARIZE_VERSION.trim()
+      : ''
+  if (injected.length > 0) return injected
+
+  const startDir = (() => {
+    if (typeof importMetaUrl === 'string' && importMetaUrl.trim().length > 0) {
+      try {
+        return path.dirname(fileURLToPath(importMetaUrl))
+      } catch {
+        // ignore
+      }
+    }
+
+    if (typeof __dirname === 'string' && __dirname.length > 0) return __dirname
+
+    return process.cwd()
+  })()
   let dir = startDir
 
   for (let i = 0; i < 10; i += 1) {
@@ -25,4 +45,3 @@ export function resolvePackageVersion(importMetaUrl: string): string {
 
   return '0.0.0'
 }
-

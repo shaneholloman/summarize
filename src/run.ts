@@ -1,7 +1,6 @@
 import fs from 'node:fs/promises'
-import { Option } from 'commander'
 import type { ModelMessage } from 'ai'
-import { Command, CommanderError } from 'commander'
+import { Command, CommanderError, Option } from 'commander'
 import { createLiveRenderer, render as renderMarkdownAnsi } from 'markdansi'
 import { loadSummarizeConfig } from './config.js'
 import {
@@ -20,6 +19,7 @@ import {
   parseFirecrawlMode,
   parseLengthArg,
   parseMarkdownMode,
+  parseMetricsMode,
   parseRenderMode,
   parseStreamMode,
   parseYoutubeMode,
@@ -90,18 +90,16 @@ type JsonOutput = {
     chunkCount: number
   } | null
   metrics: ReturnType<typeof buildRunCostReport> | null
-  cost?: ReturnType<typeof buildRunCostReport> | null
   summary: string | null
 }
 
 const MAP_REDUCE_TRIGGER_CHARACTERS = 120_000
 const MAP_REDUCE_CHUNK_CHARACTERS = 60_000
 
-function buildProgram({ version }: { version: string }) {
+function buildProgram() {
   return new Command()
     .name('summarize')
     .description('Summarize web pages and YouTube links (uses direct provider API keys).')
-    .version(version, '--version', 'Print version')
     .argument('[input]', 'URL or local file path to summarize')
     .option(
       '--youtube <mode>',
@@ -133,12 +131,7 @@ function buildProgram({ version }: { version: string }) {
       'LLM model id (gateway-style): xai/..., openai/..., google/... (default: google/gemini-3-flash-preview)',
       undefined
     )
-    .option(
-      '--raw',
-      'Raw website extraction (disables Firecrawl + LLM Markdown conversion). Shorthand for --firecrawl off --markdown off.',
-      false
-    )
-    .option('--extract-only', 'Print extracted content and exit', false)
+    .option('--extract-only', 'Print extracted content and exit (no LLM summary)', false)
     .option('--json', 'Output structured JSON', false)
     .option(
       '--stream <mode>',
@@ -151,9 +144,12 @@ function buildProgram({ version }: { version: string }) {
       'auto'
     )
     .option('--verbose', 'Print detailed progress info to stderr', false)
-    .option('--no-metrics', 'Disable final metrics line and omit metrics from --json output')
-    .option('--cost-details', 'Print detailed token + cost breakdown to stderr', false)
-    .addOption(new Option('--cost').hideHelp())
+    .addOption(
+      new Option('--metrics <mode>', 'Metrics output: off, on, detailed')
+        .choices(['off', 'on', 'detailed'])
+        .default('on')
+    )
+    .option('-V, --version', 'Print version and exit', false)
     .allowExcessArguments(false)
 }
 
@@ -230,7 +226,9 @@ function isArchiveMediaType(mediaType: string): boolean {
   )
 }
 
-function attachmentByteLength(attachment: Awaited<ReturnType<typeof loadLocalAsset>>['attachment']) {
+function attachmentByteLength(
+  attachment: Awaited<ReturnType<typeof loadLocalAsset>>['attachment']
+) {
   if (attachment.part.type === 'image') {
     const image = attachment.part.image
     if (image instanceof Uint8Array) return image.byteLength
@@ -389,7 +387,7 @@ ${heading('Examples')}
 ${heading('Env Vars')}
   XAI_API_KEY           optional (required for xai/... models)
   OPENAI_API_KEY        optional (required for openai/... models)
-  GOOGLE_GENERATIVE_AI_API_KEY optional (required for google/... models)
+  GEMINI_API_KEY        optional (required for google/... models; also accepts GOOGLE_GENERATIVE_AI_API_KEY)
   ANTHROPIC_API_KEY     optional (required for anthropic/... models)
   SUMMARIZE_MODEL       optional (overrides default model selection)
   FIRECRAWL_API_KEY     optional website extraction fallback (Markdown)
@@ -611,7 +609,8 @@ export async function runCli(
   ;(globalThis as unknown as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false
 
   const normalizedArgv = argv.filter((arg) => arg !== '--')
-  const program = buildProgram({ version: resolvePackageVersion(import.meta.url) })
+  const version = resolvePackageVersion()
+  const program = buildProgram()
   program.configureOutput({
     writeOut(str) {
       stdout.write(str)
@@ -629,10 +628,12 @@ export async function runCli(
     if (error instanceof CommanderError && error.code === 'commander.helpDisplayed') {
       return
     }
-    if (error instanceof CommanderError && error.code === 'commander.version') {
-      return
-    }
     throw error
+  }
+
+  if (program.opts().version) {
+    stdout.write(`${version}\n`)
+    return
   }
 
   const rawInput = program.args[0]
@@ -655,20 +656,18 @@ export async function runCli(
   const streamMode = parseStreamMode(program.opts().stream as string)
   const renderMode = parseRenderMode(program.opts().render as string)
   const verbose = Boolean(program.opts().verbose)
-  const metricsEnabled = Boolean(program.opts().metrics)
-  const costDetails = Boolean(program.opts().costDetails) || Boolean(program.opts().cost)
+  const metricsMode = parseMetricsMode(program.opts().metrics as string)
+  const metricsEnabled = metricsMode !== 'off'
+  const metricsDetailed = metricsMode === 'detailed'
   const markdownMode = parseMarkdownMode(program.opts().markdown as string)
-  const raw = Boolean(program.opts().raw)
+
+  const shouldComputeReport = metricsEnabled
 
   const isYoutubeUrl = typeof url === 'string' ? /youtube\.com|youtu\.be/i.test(url) : false
   const firecrawlExplicitlySet = normalizedArgv.some(
     (arg) => arg === '--firecrawl' || arg.startsWith('--firecrawl=')
   )
   const requestedFirecrawlMode = parseFirecrawlMode(program.opts().firecrawl as string)
-  const markdownExplicitlySet = normalizedArgv.some(
-    (arg) => arg === '--markdown' || arg.startsWith('--markdown=')
-  )
-
   const modelArg =
     typeof program.opts().model === 'string' ? (program.opts().model as string) : null
 
@@ -680,10 +679,10 @@ export async function runCli(
   const firecrawlKey = typeof env.FIRECRAWL_API_KEY === 'string' ? env.FIRECRAWL_API_KEY : null
   const anthropicKeyRaw = typeof env.ANTHROPIC_API_KEY === 'string' ? env.ANTHROPIC_API_KEY : null
   const googleKeyRaw =
-    typeof env.GOOGLE_GENERATIVE_AI_API_KEY === 'string'
-      ? env.GOOGLE_GENERATIVE_AI_API_KEY
-      : typeof env.GEMINI_API_KEY === 'string'
-        ? env.GEMINI_API_KEY
+    typeof env.GEMINI_API_KEY === 'string'
+      ? env.GEMINI_API_KEY
+      : typeof env.GOOGLE_GENERATIVE_AI_API_KEY === 'string'
+        ? env.GOOGLE_GENERATIVE_AI_API_KEY
         : typeof env.GOOGLE_API_KEY === 'string'
           ? env.GOOGLE_API_KEY
           : null
@@ -839,7 +838,7 @@ export async function runCli(
       parsedModel.provider === 'xai'
         ? 'XAI_API_KEY'
         : parsedModel.provider === 'google'
-          ? 'GOOGLE_GENERATIVE_AI_API_KEY'
+          ? 'GEMINI_API_KEY'
           : parsedModel.provider === 'anthropic'
             ? 'ANTHROPIC_API_KEY'
             : 'OPENAI_API_KEY'
@@ -1077,8 +1076,7 @@ export async function runCli(
 
     if (json) {
       clearProgressForStdout()
-      const finishReport = metricsEnabled || costDetails || verbose ? await buildReport() : null
-      const costReport = costDetails || verbose ? finishReport : null
+      const finishReport = shouldComputeReport ? await buildReport() : null
       const input: JsonOutput['input'] =
         sourceKind === 'file'
           ? {
@@ -1121,12 +1119,11 @@ export async function runCli(
           chunkCount: 1,
         },
         metrics: metricsEnabled ? finishReport : null,
-        cost: metricsEnabled ? costReport : null,
         summary,
       }
 
-      if (metricsEnabled && costReport) {
-        writeCostReport(costReport)
+      if (metricsDetailed && finishReport) {
+        writeCostReport(finishReport)
       }
       stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
       if (metricsEnabled && finishReport) {
@@ -1160,8 +1157,8 @@ export async function runCli(
       }
     }
 
-    const report = metricsEnabled || costDetails || verbose ? await buildReport() : null
-    if (metricsEnabled && report && (costDetails || verbose)) writeCostReport(report)
+    const report = shouldComputeReport ? await buildReport() : null
+    if (metricsDetailed && report) writeCostReport(report)
     if (metricsEnabled && report) {
       writeFinishLine({
         stderr,
@@ -1205,15 +1202,15 @@ export async function runCli(
       spinner.stopAndClear()
       stopOscProgress()
     }
-	    clearProgressBeforeStdout = stopProgress
-	    try {
-	      const loaded = await loadLocalAsset({ filePath: inputTarget.filePath })
-	      assertAssetMediaTypeSupported({ attachment: loaded.attachment, sizeLabel })
-	      if (progressEnabled) {
-	        const mt = loaded.attachment.mediaType
-	        const name = loaded.attachment.filename
-	        const details = sizeLabel ? `${mt}, ${sizeLabel}` : mt
-	        spinner.setText(name ? `Summarizing ${name} (${details})…` : `Summarizing ${details}…`)
+    clearProgressBeforeStdout = stopProgress
+    try {
+      const loaded = await loadLocalAsset({ filePath: inputTarget.filePath })
+      assertAssetMediaTypeSupported({ attachment: loaded.attachment, sizeLabel })
+      if (progressEnabled) {
+        const mt = loaded.attachment.mediaType
+        const name = loaded.attachment.filename
+        const details = sizeLabel ? `${mt}, ${sizeLabel}` : mt
+        spinner.setText(name ? `Summarizing ${name} (${details})…` : `Summarizing ${details}…`)
       }
       await summarizeAsset({
         sourceKind: 'file',
@@ -1264,13 +1261,13 @@ export async function runCli(
           }
         })()
 
-	        if (!loaded) return
-	        assertAssetMediaTypeSupported({ attachment: loaded.attachment, sizeLabel: null })
-	        if (progressEnabled) spinner.setText('Summarizing…')
-	        await summarizeAsset({
-	          sourceKind: 'asset-url',
-	          sourceLabel: loaded.sourceLabel,
-	          attachment: loaded.attachment,
+        if (!loaded) return
+        assertAssetMediaTypeSupported({ attachment: loaded.attachment, sizeLabel: null })
+        if (progressEnabled) spinner.setText('Summarizing…')
+        await summarizeAsset({
+          sourceKind: 'asset-url',
+          sourceLabel: loaded.sourceLabel,
+          attachment: loaded.attachment,
         })
         return
       } finally {
@@ -1287,9 +1284,6 @@ export async function runCli(
   }
 
   const firecrawlMode = (() => {
-    if (raw) {
-      return 'off'
-    }
     if (extractOnly && !isYoutubeUrl && !firecrawlExplicitlySet && firecrawlConfigured) {
       return 'always'
     }
@@ -1299,11 +1293,7 @@ export async function runCli(
     throw new Error('--firecrawl always requires FIRECRAWL_API_KEY')
   }
 
-  if (raw && (firecrawlExplicitlySet || markdownExplicitlySet)) {
-    throw new Error('--raw cannot be combined with --firecrawl or --markdown')
-  }
-
-  const effectiveMarkdownMode = raw ? 'off' : markdownMode
+  const effectiveMarkdownMode = markdownMode
   const markdownRequested = extractOnly && !isYoutubeUrl && effectiveMarkdownMode !== 'off'
   const hasKeyForModel =
     parsedModelForLlm.provider === 'xai'
@@ -1320,7 +1310,7 @@ export async function runCli(
       parsedModelForLlm.provider === 'xai'
         ? 'XAI_API_KEY'
         : parsedModelForLlm.provider === 'google'
-          ? 'GOOGLE_GENERATIVE_AI_API_KEY'
+          ? 'GEMINI_API_KEY'
           : parsedModelForLlm.provider === 'anthropic'
             ? 'ANTHROPIC_API_KEY'
             : 'OPENAI_API_KEY'
@@ -1332,7 +1322,7 @@ export async function runCli(
     verbose,
     `config url=${url} timeoutMs=${timeoutMs} youtube=${youtubeMode} firecrawl=${firecrawlMode} length=${
       lengthArg.kind === 'preset' ? lengthArg.preset : `${lengthArg.maxCharacters} chars`
-    } json=${json} extractOnly=${extractOnly} markdown=${effectiveMarkdownMode} model=${model} raw=${raw} stream=${effectiveStreamMode} render=${effectiveRenderMode}`,
+    } json=${json} extractOnly=${extractOnly} markdown=${effectiveMarkdownMode} model=${model} stream=${effectiveStreamMode} render=${effectiveRenderMode}`,
     verboseColor
   )
   writeVerbose(
@@ -1478,8 +1468,7 @@ export async function runCli(
     if (extractOnly) {
       clearProgressForStdout()
       if (json) {
-        const finishReport = metricsEnabled || costDetails || verbose ? await buildReport() : null
-        const costReport = costDetails || verbose ? finishReport : null
+        const finishReport = shouldComputeReport ? await buildReport() : null
         const payload: JsonOutput = {
           input: {
             kind: 'url',
@@ -1506,11 +1495,10 @@ export async function runCli(
           prompt,
           llm: null,
           metrics: metricsEnabled ? finishReport : null,
-          cost: metricsEnabled ? costReport : null,
           summary: null,
         }
-        if (metricsEnabled && costReport) {
-          writeCostReport(costReport)
+        if (metricsDetailed && finishReport) {
+          writeCostReport(finishReport)
         }
         stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
         if (metricsEnabled && finishReport) {
@@ -1528,8 +1516,8 @@ export async function runCli(
       }
 
       stdout.write(`${extracted.content}\n`)
-      const report = metricsEnabled || costDetails || verbose ? await buildReport() : null
-      if (metricsEnabled && report && (costDetails || verbose)) writeCostReport(report)
+      const report = shouldComputeReport ? await buildReport() : null
+      if (metricsDetailed && report) writeCostReport(report)
       if (metricsEnabled && report) {
         writeFinishLine({
           stderr,
@@ -1556,7 +1544,7 @@ export async function runCli(
       parsedModel.provider === 'xai'
         ? 'XAI_API_KEY'
         : parsedModel.provider === 'google'
-          ? 'GOOGLE_GENERATIVE_AI_API_KEY'
+          ? 'GEMINI_API_KEY'
           : parsedModel.provider === 'anthropic'
             ? 'ANTHROPIC_API_KEY'
             : 'OPENAI_API_KEY'
@@ -1688,12 +1676,12 @@ export async function runCli(
           try {
             let cleared = false
             for await (const delta of streamResult.textStream) {
-              if (!cleared) {
-                clearProgressForStdout()
-                cleared = true
-              }
               streamed += delta
               if (shouldStreamSummaryToStdout) {
+                if (!cleared) {
+                  clearProgressForStdout()
+                  cleared = true
+                }
                 stdout.write(delta)
                 continue
               }
@@ -1969,8 +1957,7 @@ export async function runCli(
     }
 
     if (json) {
-      const finishReport = metricsEnabled || costDetails || verbose ? await buildReport() : null
-      const costReport = costDetails || verbose ? finishReport : null
+      const finishReport = shouldComputeReport ? await buildReport() : null
       const payload: JsonOutput = {
         input: {
           kind: 'url',
@@ -2003,12 +1990,11 @@ export async function runCli(
           chunkCount,
         },
         metrics: metricsEnabled ? finishReport : null,
-        cost: metricsEnabled ? costReport : null,
         summary,
       }
 
-      if (metricsEnabled && costReport) {
-        writeCostReport(costReport)
+      if (metricsDetailed && finishReport) {
+        writeCostReport(finishReport)
       }
       stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
       if (metricsEnabled && finishReport) {
@@ -2042,8 +2028,8 @@ export async function runCli(
       }
     }
 
-    const report = metricsEnabled || costDetails || verbose ? await buildReport() : null
-    if (metricsEnabled && report && (costDetails || verbose)) writeCostReport(report)
+    const report = shouldComputeReport ? await buildReport() : null
+    if (metricsDetailed && report) writeCostReport(report)
     if (metricsEnabled && report) {
       writeFinishLine({
         stderr,

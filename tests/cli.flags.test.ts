@@ -5,6 +5,7 @@ import {
   parseFirecrawlMode,
   parseLengthArg,
   parseMarkdownMode,
+  parseMetricsMode,
   parseRenderMode,
   parseStreamMode,
   parseYoutubeMode,
@@ -57,6 +58,13 @@ describe('cli flag parsing', () => {
     expect(parseRenderMode('md')).toBe('md')
     expect(parseRenderMode('markdown')).toBe('md')
     expect(() => parseRenderMode('nope')).toThrow(/Unsupported --render/)
+  })
+
+  it('parses --metrics', () => {
+    expect(parseMetricsMode('on')).toBe('on')
+    expect(parseMetricsMode('off')).toBe('off')
+    expect(parseMetricsMode('detailed')).toBe('detailed')
+    expect(() => parseMetricsMode('nope')).toThrow(/Unsupported --metrics/)
   })
 
   it('parses --length as preset or character count', () => {

@@ -14,14 +14,14 @@ Use this for non-YouTube URLs.
 
 - `--firecrawl off|auto|always`
 - `--markdown off|auto|llm` (default: `auto`; only affects `--extract-only` for non-YouTube URLs)
-- `--raw` (shorthand for `--firecrawl off --markdown off`)
+- Raw mode: use `--firecrawl off --markdown off` (there is no `--raw` flag).
 - `--timeout 30s|30|2m|5000ms` (default: `2m`)
-- `--extract-only` (print extracted content, no LLM call)
+- `--extract-only` (print extracted content; no summary LLM call)
 - `--json` (emit a single JSON object)
 - `--verbose` (progress + which extractor was used)
-- `--cost` (token usage + estimated costs)
+- `--metrics off|on|detailed` (default: `on`; `detailed` prints token usage + estimated costs)
 
 ## API keys
 
 - Optional: `FIRECRAWL_API_KEY` (for the Firecrawl fallback / preferred Markdown output)
-- Optional: `XAI_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `GEMINI_API_KEY` (required only when `--markdown llm` is used, or when `--markdown auto` falls back to LLM conversion)
+- Optional: `XAI_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` (also accepts `GOOGLE_GENERATIVE_AI_API_KEY` / `GOOGLE_API_KEY`) (required only when `--markdown llm` is used, or when `--markdown auto` falls back to LLM conversion)

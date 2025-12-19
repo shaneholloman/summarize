@@ -12,36 +12,14 @@ const htmlResponse = (html: string, status = 200) =>
     headers: { 'Content-Type': 'text/html' },
   })
 
-const generateTextMock = vi.fn(async () => ({
-  text: 'OK',
-  usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
-}))
-
-vi.mock('ai', () => ({
-  generateText: generateTextMock,
-}))
-
-vi.mock('@ai-sdk/openai', () => ({
-  createOpenAI: vi.fn(({ apiKey }: { apiKey: string }) => {
-    return (modelId: string) => ({ provider: 'openai', modelId, apiKey })
-  }),
-}))
-
-describe('cli json + cost report', () => {
-  it('prints cost lines to stderr when --json --metrics detailed', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'summarize-json-cost-'))
+describe('cli --metrics off', () => {
+  it('does not print the final finish line', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'summarize-no-metrics-'))
     const cacheDir = join(root, '.summarize', 'cache')
     mkdirSync(cacheDir, { recursive: true })
-
     writeFileSync(
       join(cacheDir, 'litellm-model_prices_and_context_window.json'),
-      JSON.stringify({
-        'gpt-5.2': {
-          input_cost_per_token: 0.000001,
-          output_cost_per_token: 0.000002,
-          max_output_tokens: 2048,
-        },
-      }),
+      JSON.stringify({}),
       'utf8'
     )
     writeFileSync(
@@ -76,27 +54,14 @@ describe('cli json + cost report', () => {
       },
     })
 
-    await runCli(
-      [
-        '--json',
-        '--metrics',
-        'detailed',
-        '--model',
-        'openai/gpt-5.2',
-        '--timeout',
-        '10s',
-        'https://example.com',
-      ],
-      {
-        env: { HOME: root, OPENAI_API_KEY: 'test' },
-        fetch: fetchMock as unknown as typeof fetch,
-        stdout,
-        stderr,
-      }
-    )
+    await runCli(['--metrics', 'off', '--extract-only', '--timeout', '2s', 'https://example.com'], {
+      env: { HOME: root },
+      fetch: fetchMock as unknown as typeof fetch,
+      stdout,
+      stderr,
+    })
 
-    expect(stdoutText).toContain('"summary"')
-    expect(stderrText).toContain('cost llm provider=')
-    expect(stderrText).toContain('cost total estimated=')
+    expect(stdoutText).toContain('Hello')
+    expect(stderrText).not.toContain('Finished in')
   })
 })

@@ -100,17 +100,4 @@ describe('cli error handling', () => {
       })
     ).rejects.toThrow(/Missing GOOGLE_GENERATIVE_AI_API_KEY/)
   })
-
-  it('errors when --raw is combined with --firecrawl or --markdown', async () => {
-    await expect(
-      runCli(['--raw', '--firecrawl', 'off', '--extract-only', 'https://example.com'], {
-        env: {},
-        fetch: vi.fn(
-          async () => new Response('<html></html>', { status: 200 })
-        ) as unknown as typeof fetch,
-        stdout: noopStream(),
-        stderr: noopStream(),
-      })
-    ).rejects.toThrow('--raw cannot be combined with --firecrawl or --markdown')
-  })
 })
