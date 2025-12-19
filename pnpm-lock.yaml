@@ -27,8 +27,8 @@ importers:
         specifier: ^2.17.0
         version: 2.17.0
       tokentally:
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: github:steipete/tokentally#v0.1.0
+        version: https://codeload.github.com/steipete/tokentally/tar.gz/99865e5c16f5340c9589a2c5d85c3ea47dbcec82
     devDependencies:
       '@ai-sdk/anthropic':
         specifier: 3.0.0-beta.91
@@ -1111,8 +1111,9 @@ packages:
     resolution: {integrity: sha512-kh9LVIWH5CnL63Ipf0jhlBIy0UsrMj/NJDfpsy1SqOXlLKEVyXXYrnFxFT1yOOYVGBSApeVnjPw/sBz5BfEjAQ==}
     engines: {node: '>=14.16'}
 
-  tokentally@0.1.0:
-    resolution: {integrity: sha512-G2gJiIFz543bcyKHruXzV6D56RqIEmihht8IFGN3SvgYV4OJs7ZfaJqjyueD5sFjweWLHWMBh7tPhGIXlS0aUA==}
+  tokentally@https://codeload.github.com/steipete/tokentally/tar.gz/99865e5c16f5340c9589a2c5d85c3ea47dbcec82:
+    resolution: {tarball: https://codeload.github.com/steipete/tokentally/tar.gz/99865e5c16f5340c9589a2c5d85c3ea47dbcec82}
+    version: 0.1.0
     engines: {node: '>=20'}
 
   tsx@4.21.0:
@@ -2331,7 +2332,7 @@ snapshots:
       '@tokenizer/token': 0.3.0
       ieee754: 1.2.1
 
-  tokentally@0.1.0: {}
+  tokentally@https://codeload.github.com/steipete/tokentally/tar.gz/99865e5c16f5340c9589a2c5d85c3ea47dbcec82: {}
 
   tsx@4.21.0:
     dependencies:

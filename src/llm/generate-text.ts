@@ -14,6 +14,51 @@ export type LlmTokenUsage = {
   totalTokens: number | null
 }
 
+function parseAnthropicErrorPayload(
+  responseBody: string
+): { type: string; message: string } | null {
+  try {
+    const parsed = JSON.parse(responseBody) as {
+      type?: unknown
+      error?: { type?: unknown; message?: unknown }
+    }
+    if (parsed?.type !== 'error') return null
+    const error = parsed.error
+    if (!error || typeof error !== 'object') return null
+    const errorType = typeof error.type === 'string' ? error.type : null
+    const errorMessage = typeof error.message === 'string' ? error.message : null
+    if (!errorType || !errorMessage) return null
+    return { type: errorType, message: errorMessage }
+  } catch {
+    return null
+  }
+}
+
+function normalizeAnthropicModelAccessError(error: unknown, modelId: string): Error | null {
+  if (!error || typeof error !== 'object') return null
+  const maybe = error as Record<string, unknown>
+  const statusCode = typeof maybe.statusCode === 'number' ? maybe.statusCode : null
+  const responseBody = typeof maybe.responseBody === 'string' ? maybe.responseBody : null
+  const payload = responseBody ? parseAnthropicErrorPayload(responseBody) : null
+  const payloadType = payload?.type ?? null
+  const payloadMessage = payload?.message ?? null
+  const message = typeof maybe.message === 'string' ? maybe.message : ''
+  const combinedMessage = (payloadMessage ?? message).trim()
+
+  const hasModelMessage = /^model:\s*\S+/i.test(combinedMessage)
+  const isAccessStatus = statusCode === 401 || statusCode === 403 || statusCode === 404
+  const isAccessType =
+    payloadType === 'not_found_error' ||
+    payloadType === 'permission_error' ||
+    payloadType === 'authentication_error'
+
+  if (!hasModelMessage && !isAccessStatus && !isAccessType) return null
+
+  const modelLabel = hasModelMessage ? combinedMessage.replace(/^model:\s*/i, '').trim() : modelId
+  const hint = `Anthropic API rejected model "${modelLabel}". Your ANTHROPIC_API_KEY likely lacks access to this model or it is unavailable for your account. Try another anthropic/... model or request access.`
+  return new Error(hint, { cause: error instanceof Error ? error : undefined })
+}
+
 function normalizeTokenUsage(raw: unknown): LlmTokenUsage | null {
   if (!raw || typeof raw !== 'object') return null
   const usage = raw as Record<string, unknown>
@@ -163,6 +208,10 @@ export async function generateTextWithModelId({
       usage: normalizeTokenUsage((result as unknown as { usage?: unknown }).usage),
     }
   } catch (error) {
+    if (parsed.provider === 'anthropic') {
+      const normalized = normalizeAnthropicModelAccessError(error, parsed.model)
+      if (normalized) throw normalized
+    }
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('LLM request timed out')
     }
@@ -206,6 +255,10 @@ export async function streamTextWithModelId({
     const { streamText } = await import('ai')
     let lastError: unknown = null
     const onError = ({ error }: { error: unknown }) => {
+      if (parsed.provider === 'anthropic') {
+        lastError = normalizeAnthropicModelAccessError(error, parsed.model) ?? error
+        return
+      }
       lastError = error
     }
 
@@ -307,6 +360,10 @@ export async function streamTextWithModelId({
       lastError: () => lastError,
     }
   } catch (error) {
+    if (parsed.provider === 'anthropic') {
+      const normalized = normalizeAnthropicModelAccessError(error, parsed.model)
+      if (normalized) throw normalized
+    }
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('LLM request timed out')
     }
