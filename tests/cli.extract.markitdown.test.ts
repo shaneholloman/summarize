@@ -19,7 +19,7 @@ describe('cli --extract --format md (markitdown fallback)', () => {
 
     const execFileMock = vi.fn((file, args, _opts, cb) => {
       expect(file).toBe('uvx')
-      expect(args.slice(0, 3)).toEqual(['--from', 'markitdown', 'markitdown'])
+      expect(args.slice(0, 3)).toEqual(['--from', 'markitdown[all]', 'markitdown'])
       cb(null, '# Converted\\n\\nHello\\n', '')
     })
 
