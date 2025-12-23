@@ -60,7 +60,9 @@ describe('model id parsing', () => {
   })
 
   it('rejects missing model ids after provider prefix', () => {
-    expect(() => normalizeGatewayStyleModelId('openai/')).toThrow(/Missing model id after provider prefix/)
+    expect(() => normalizeGatewayStyleModelId('openai/')).toThrow(
+      /Missing model id after provider prefix/
+    )
   })
 
   it('rejects empty model ids', () => {
