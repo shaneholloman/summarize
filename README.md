@@ -242,6 +242,7 @@ OpenRouter (OpenAI-compatible):
 
 - Set `OPENROUTER_API_KEY=...`
 - Prefer forcing OpenRouter per model id: `--model openrouter/<author>/<slug>` (e.g. `openrouter/meta-llama/llama-3.1-8b-instruct:free`)
+- Built-in named model: `--model free` (uses a default bag of OpenRouter `:free` models). If it stops working, run `summarize generate-free` to refresh `models.free` in `~/.summarize/config.json`.
 
 Example:
 

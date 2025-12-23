@@ -51,7 +51,7 @@ Shorthand (equivalent):
 }
 ```
 
-## Model bags
+## Named models
 
 Define named models you can select via `--model <name>`:
 
@@ -73,7 +73,12 @@ Define named models you can select via `--model <name>`:
 }
 ```
 
-Use a bag as your default `model`:
+Notes:
+
+- `auto` is reserved and can’t be defined as a name.
+- `free` is built-in (OpenRouter `:free` candidates). Override it by defining `models.free` in your config, or regenerate it via `summarize generate-free`.
+
+Use a named model as your default `model`:
 
 ```json
 {

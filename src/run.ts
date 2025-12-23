@@ -387,6 +387,26 @@ type JsonOutput = {
 
 const MAX_TEXT_BYTES_DEFAULT = 10 * 1024 * 1024
 
+const BUILTIN_MODELS: Record<string, ModelConfig> = {
+  free: {
+    mode: 'auto',
+    rules: [
+      {
+        candidates: [
+          'openrouter/xiaomi/mimo-v2-flash:free',
+          'openrouter/qwen/qwen3-coder:free',
+          'openrouter/kwaipilot/kat-coder-pro:free',
+          'openrouter/meta-llama/llama-3.3-70b-instruct:free',
+          'openrouter/google/gemma-3-27b-it:free',
+          'openrouter/google/gemma-3n-e2b-it:free',
+          'openrouter/tngtech/deepseek-r1t-chimera:free',
+          'openrouter/nousresearch/hermes-3-llama-3.1-405b:free',
+        ],
+      },
+    ],
+  },
+}
+
 function buildProgram() {
   return new Command()
     .name('summarize')
@@ -1503,9 +1523,14 @@ export async function runCli(
   }
 
   const modelMap = (() => {
-    const raw = config?.models
-    if (!raw) return new Map<string, { name: string; model: ModelConfig }>()
     const out = new Map<string, { name: string; model: ModelConfig }>()
+
+    for (const [name, model] of Object.entries(BUILTIN_MODELS)) {
+      out.set(name.toLowerCase(), { name, model })
+    }
+
+    const raw = config?.models
+    if (!raw) return out
     for (const [name, model] of Object.entries(raw)) {
       out.set(name.toLowerCase(), { name, model })
     }
@@ -1533,6 +1558,7 @@ export async function runCli(
 
   const requestedModelInput = ((explicitModelArg?.trim() ?? '') || resolvedDefaultModel).trim()
   const requestedModelInputLower = requestedModelInput.toLowerCase()
+  const wantsFreeNamedModel = requestedModelInputLower === 'free'
 
   const namedModelMatch =
     requestedModelInputLower !== 'auto' ? (modelMap.get(requestedModelInputLower) ?? null) : null
@@ -2332,10 +2358,20 @@ export async function runCli(
     }
 
     if (!summaryResult || !usedAttempt) {
+      const withFreeTip = (message: string) => {
+        if (!isNamedModelSelection || !wantsFreeNamedModel) return message
+        return (
+          `${message}\n` +
+          `Tip: run "summarize generate-free" to refresh the free model candidates (writes ~/.summarize/config.json).`
+        )
+      }
+
       if (isNamedModelSelection) {
         if (lastError === null && missingRequiredEnvs.size > 0) {
           throw new Error(
-            `Missing ${Array.from(missingRequiredEnvs).sort().join(', ')} for --model ${requestedModelInput}.`
+            withFreeTip(
+              `Missing ${Array.from(missingRequiredEnvs).sort().join(', ')} for --model ${requestedModelInput}.`
+            )
           )
         }
         if (lastError instanceof Error) {
@@ -2345,11 +2381,11 @@ export async function runCli(
               fetchImpl: trackedFetch,
               timeoutMs,
             })
-            throw new Error(message, { cause: lastError })
+            throw new Error(withFreeTip(message), { cause: lastError })
           }
-          throw lastError
+          throw new Error(withFreeTip(lastError.message), { cause: lastError })
         }
-        throw new Error(`No model available for --model ${requestedModelInput}`)
+        throw new Error(withFreeTip(`No model available for --model ${requestedModelInput}`))
       }
       if (textContent) {
         clearProgressForStdout()
@@ -3484,10 +3520,20 @@ export async function runCli(
     }
 
     if (!summaryResult || !usedAttempt) {
+      const withFreeTip = (message: string) => {
+        if (!isNamedModelSelection || !wantsFreeNamedModel) return message
+        return (
+          `${message}\n` +
+          `Tip: run "summarize generate-free" to refresh the free model candidates (writes ~/.summarize/config.json).`
+        )
+      }
+
       if (isNamedModelSelection) {
         if (lastError === null && missingRequiredEnvs.size > 0) {
           throw new Error(
-            `Missing ${Array.from(missingRequiredEnvs).sort().join(', ')} for --model ${requestedModelInput}.`
+            withFreeTip(
+              `Missing ${Array.from(missingRequiredEnvs).sort().join(', ')} for --model ${requestedModelInput}.`
+            )
           )
         }
         if (lastError instanceof Error) {
@@ -3497,11 +3543,11 @@ export async function runCli(
               fetchImpl: trackedFetch,
               timeoutMs,
             })
-            throw new Error(message, { cause: lastError })
+            throw new Error(withFreeTip(message), { cause: lastError })
           }
-          throw lastError
+          throw new Error(withFreeTip(lastError.message), { cause: lastError })
         }
-        throw new Error(`No model available for --model ${requestedModelInput}`)
+        throw new Error(withFreeTip(`No model available for --model ${requestedModelInput}`))
       }
       clearProgressForStdout()
       if (json) {

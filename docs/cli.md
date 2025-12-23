@@ -78,3 +78,17 @@ Notes:
 
 - CLI output is treated as text only (no token accounting).
 - If a CLI call fails, auto mode falls back to the next candidate.
+
+## Generate free-model bag (OpenRouter)
+
+`summarize` ships with a built-in named model `free`, backed by OpenRouter `:free` models.
+To regenerate the candidate list (and persist it in your config):
+
+```bash
+summarize generate-free
+```
+
+Options:
+
+- `--runs 3` (default): timing runs per selected model (median)
+- `--smart 3` (default): number of “smart-first” picks (rest filled by fastest)
