@@ -24,7 +24,7 @@ describe('buildFileSummaryPrompt', () => {
     })
 
     expect(prompt).toContain('Target length:')
-    expect(prompt).toContain('soft guideline')
+    expect(prompt).toContain('Hard limit')
     expect(prompt).toContain('Extracted content length: 120 characters')
     expect(prompt).not.toContain('Filename:')
     expect(prompt).not.toContain('Media type:')
@@ -38,7 +38,7 @@ describe('buildFileSummaryPrompt', () => {
       contentLength: 120,
     })
 
-    expect(prompt).toContain('Target length: around 120 characters total')
+    expect(prompt).toContain('Target length: up to 120 characters total')
     expect(prompt).toContain('Extracted content length: 120 characters')
   })
 
@@ -66,7 +66,7 @@ describe('buildFileTextSummaryPrompt', () => {
       contentLength: 300,
     })
 
-    expect(prompt).toContain('Target length: around 300 characters total')
+    expect(prompt).toContain('Target length: up to 300 characters total')
     expect(prompt).toContain('Original media type: text/plain')
     expect(prompt).toContain('Provided as: text/markdown')
     expect(prompt).toContain('Extracted content length: 300 characters')

@@ -63,8 +63,6 @@ const resolveSummaryDirective = (
   SUMMARY_LENGTH_DIRECTIVES[length]
 
 const formatCount = (value: number): string => value.toLocaleString()
-const PRESET_ORDER: SummaryLength[] = ['short', 'medium', 'long', 'xl', 'xxl']
-const presetIndex = (preset: SummaryLength): number => PRESET_ORDER.indexOf(preset)
 
 export type ShareContextEntry = {
   author: string
@@ -122,13 +120,9 @@ export function buildLinkSummaryPrompt({
     ? 'You summarize online videos for curious Twitter users who want to know whether the clip is worth watching.'
     : 'You summarize online articles for curious Twitter users who want the gist before deciding to dive in.'
 
-  const inferredPreset =
-    contentCharacters > 0 ? pickSummaryLengthForCharacters(contentCharacters) : null
   const effectiveSummaryLength: SummaryLengthTarget =
     typeof summaryLength === 'string'
-      ? inferredPreset && presetIndex(inferredPreset) < presetIndex(summaryLength)
-        ? inferredPreset
-        : summaryLength
+      ? summaryLength
       : contentCharacters > 0 && summaryLength.maxCharacters > contentCharacters
         ? { maxCharacters: contentCharacters }
         : summaryLength
@@ -140,10 +134,10 @@ export function buildLinkSummaryPrompt({
   const maxCharactersLine =
     typeof effectiveSummaryLength === 'string'
       ? ''
-      : `Target length: around ${formatCount(effectiveSummaryLength.maxCharacters)} characters total (including Markdown and whitespace). This is a soft guideline; prioritize clarity and completeness.`
+      : `Target length: up to ${formatCount(effectiveSummaryLength.maxCharacters)} characters total (including Markdown and whitespace). Hard limit: do not exceed it.`
   const contentLengthLine =
     contentCharacters > 0
-      ? `Extracted content length: ${formatCount(contentCharacters)} characters. Do not exceed the extracted content length; if the requested length is larger, keep the summary at or below the extracted content length and do not add details.`
+      ? `Extracted content length: ${formatCount(contentCharacters)} characters. Hard limit: never exceed this length. If the requested length is larger, do not pad—finish early rather than adding filler.`
       : ''
 
   const shareLines = shares.map((share) => {

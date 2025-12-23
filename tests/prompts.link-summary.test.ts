@@ -37,7 +37,7 @@ describe('buildLinkSummaryPrompt', () => {
       shares: [],
     })
 
-    expect(prompt).toContain('Target length: around 4 characters total')
+    expect(prompt).toContain('Target length: up to 4 characters total')
     expect(prompt).toContain('Extracted content length: 4 characters')
   })
 
@@ -70,7 +70,8 @@ describe('buildLinkSummaryPrompt', () => {
       '- @steipete (2025-12-17) [1,200 likes, 45 reshares, 2 replies]: Worth reading'
     )
     expect(prompt).toContain('append a brief subsection titled "What sharers are saying"')
-    expect(prompt).toContain('Write a tight paragraph')
+    expect(prompt).toContain('Use level-3 Markdown headings (###)')
+    expect(prompt).toContain('Key Evidence')
   })
 
   it('keeps token map stable', () => {

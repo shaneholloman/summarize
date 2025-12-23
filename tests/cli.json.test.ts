@@ -149,6 +149,6 @@ describe('cli --json', () => {
     expect(parsed.prompt).toContain(
       `Extracted content length: ${parsed.extracted.content.length} characters`
     )
-    expect(parsed.prompt).toContain('Write a tight paragraph')
+    expect(parsed.prompt).toContain('Produce a comprehensive Markdown report')
   })
 })
