@@ -78,8 +78,8 @@ describe('refresh-free', () => {
       return new Response(
         JSON.stringify({ data: [{ id: 'google/gemma-3-27b-it:free', created }] }),
         {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
+          status: 200,
+          headers: { 'content-type': 'application/json' },
         }
       )
     })
@@ -103,7 +103,7 @@ describe('refresh-free', () => {
       const mock = generateTextWithModelId as unknown as ReturnType<typeof vi.fn>
 
       let calls = 0
-      mock.mockImplementation(async () => {
+      mock.mockImplementation(() => {
         calls += 1
         if (calls === 1) {
           throw new Error('Rate limit exceeded: free-models-per-min.')
@@ -119,10 +119,13 @@ describe('refresh-free', () => {
 
       const created = Math.floor(Date.now() / 1000)
       const fetchMock = vi.fn(async () => {
-        return new Response(JSON.stringify({ data: [{ id: 'google/gemma-3-27b-it:free', created }] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
+        return new Response(
+          JSON.stringify({ data: [{ id: 'google/gemma-3-27b-it:free', created }] }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }
+        )
       })
 
       const promise = runCli(['refresh-free', '--runs', '0', '--min-params', '0b', '--verbose'], {

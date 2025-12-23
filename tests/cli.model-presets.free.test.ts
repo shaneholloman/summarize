@@ -32,7 +32,9 @@ describe('model presets: free', () => {
     await expect(
       runCli(['--model', 'foobar', '--timeout', '2s', 'https://example.com'], {
         env: { HOME: root },
-        fetch: vi.fn(async () => new Response('<html></html>', { status: 200 })) as unknown as typeof fetch,
+        fetch: vi.fn(
+          async () => new Response('<html></html>', { status: 200 })
+        ) as unknown as typeof fetch,
         stdout: collectStream().stream,
         stderr: collectStream().stream,
       })
@@ -42,7 +44,7 @@ describe('model presets: free', () => {
   it('adds a refresh-free tip when --model free fails', async () => {
     const { generateTextWithModelId } = await import('../src/llm/generate-text.js')
     const generateMock = generateTextWithModelId as unknown as ReturnType<typeof vi.fn>
-    generateMock.mockReset().mockImplementation(async () => {
+    generateMock.mockReset().mockImplementation(() => {
       throw new Error('boom')
     })
 
@@ -101,4 +103,3 @@ describe('model presets: free', () => {
     expect(first?.modelId).toBe('openai/gpt-5.2')
   })
 })
-

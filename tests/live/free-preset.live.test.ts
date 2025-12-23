@@ -58,7 +58,16 @@ const silentStderr = new Writable({
 
         const out = collectStream()
         await runCli(
-          ['--json', '--metrics', 'off', '--timeout', '60s', '--model', 'free', 'https://example.com'],
+          [
+            '--json',
+            '--metrics',
+            'off',
+            '--timeout',
+            '60s',
+            '--model',
+            'free',
+            'https://example.com',
+          ],
           {
             env,
             fetch: globalThis.fetch.bind(globalThis),
@@ -80,4 +89,3 @@ const silentStderr = new Writable({
     timeoutMs
   )
 })
-

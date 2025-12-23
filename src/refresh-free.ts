@@ -25,7 +25,7 @@ function supportsColor(
 ): boolean {
   if (env.NO_COLOR) return false
   if (env.FORCE_COLOR && env.FORCE_COLOR !== '0') return true
-  if (!Boolean((stream as unknown as { isTTY?: boolean }).isTTY)) return false
+  if (!(stream as unknown as { isTTY?: boolean }).isTTY) return false
   const term = env.TERM?.toLowerCase()
   if (!term || term === 'dumb') return false
   return true
@@ -315,7 +315,9 @@ export async function refreshFree({
   })
   if (freeModels.length === 0) {
     if (applyMaxAgeFilter) {
-      throw new Error(`OpenRouter /models returned no :free models from the last ${MAX_AGE_DAYS} days`)
+      throw new Error(
+        `OpenRouter /models returned no :free models from the last ${MAX_AGE_DAYS} days`
+      )
     }
     throw new Error('OpenRouter /models returned no :free models')
   }
@@ -352,23 +354,21 @@ export async function refreshFree({
     }
   }
 
-  const smartSorted = freeModels
-    .slice()
-    .sort((a, b) => {
-      const aCreated = a.createdAtMs ?? -1
-      const bCreated = b.createdAtMs ?? -1
-      if (aCreated !== bCreated) return bCreated - aCreated
-      const aContext = a.contextLength ?? -1
-      const bContext = b.contextLength ?? -1
-      if (aContext !== bContext) return bContext - aContext
-      const aOut = a.maxCompletionTokens ?? -1
-      const bOut = b.maxCompletionTokens ?? -1
-      if (aOut !== bOut) return bOut - aOut
-      if (a.supportedParametersCount !== b.supportedParametersCount) {
-        return b.supportedParametersCount - a.supportedParametersCount
-      }
-      return a.id.localeCompare(b.id)
-    })
+  const smartSorted = freeModels.slice().sort((a, b) => {
+    const aCreated = a.createdAtMs ?? -1
+    const bCreated = b.createdAtMs ?? -1
+    if (aCreated !== bCreated) return bCreated - aCreated
+    const aContext = a.contextLength ?? -1
+    const bContext = b.contextLength ?? -1
+    if (aContext !== bContext) return bContext - aContext
+    const aOut = a.maxCompletionTokens ?? -1
+    const bOut = b.maxCompletionTokens ?? -1
+    if (aOut !== bOut) return bOut - aOut
+    if (a.supportedParametersCount !== b.supportedParametersCount) {
+      return b.supportedParametersCount - a.supportedParametersCount
+    }
+    return a.id.localeCompare(b.id)
+  })
 
   const freeIds = smartSorted.map((m) => m.id)
 
@@ -402,7 +402,13 @@ export async function refreshFree({
   let done = 0
   let okCount = 0
   const failureCounts: Record<
-    'empty' | 'rateLimitMin' | 'rateLimitDay' | 'noProviders' | 'timeout' | 'providerError' | 'other',
+    | 'empty'
+    | 'rateLimitMin'
+    | 'rateLimitDay'
+    | 'noProviders'
+    | 'timeout'
+    | 'providerError'
+    | 'other',
     number
   > = {
     empty: 0,
@@ -474,104 +480,109 @@ export async function refreshFree({
     if (rl === 'perDay') return 'rateLimitDay'
     if (m.includes('no allowed providers are available')) return 'noProviders'
     if (m.includes('timed out') || m.includes('timeout') || m.includes('aborted')) return 'timeout'
-    if (m.includes('provider returned error') || m.includes('provider error')) return 'providerError'
+    if (m.includes('provider returned error') || m.includes('provider error'))
+      return 'providerError'
     return 'other'
   }
 
   // Pass 1: test all free models once.
   {
-    const batchResults = await mapWithConcurrency(freeIds, CONCURRENCY, async (openrouterModelId) => {
-      const runStartedAt = Date.now()
-      try {
-        await waitForCooldown()
-        await generateTextWithModelId({
-          modelId: `openai/${openrouterModelId}`,
-          apiKeys,
-          prompt: 'Reply with a single word: OK',
-          temperature: 0,
-          maxOutputTokens: 16,
-          timeoutMs: TIMEOUT_MS,
-          fetchImpl,
-          forceOpenRouter: true,
-          retries: 0,
-        })
-
-        const latencyMs = Date.now() - runStartedAt
-        done += 1
-        okCount += 1
-        progress('tested')
-
-        const meta = idToMeta.get(openrouterModelId) ?? null
-        note(`${okLabel('ok')} ${openrouterModelId} ${dim(`(${formatMs(latencyMs)})`)}`)
-        return {
-          ok: true,
-          value: {
-            openrouterModelId,
-            initialLatencyMs: latencyMs,
-            medianLatencyMs: latencyMs,
-            totalLatencyMs: latencyMs,
-            successCount: 1,
-            contextLength: meta?.contextLength ?? null,
-            maxCompletionTokens: meta?.maxCompletionTokens ?? null,
-            supportedParametersCount: meta?.supportedParametersCount ?? 0,
-            modality: meta?.modality ?? null,
-            inferredParamB: meta?.inferredParamB ?? null,
-          },
-        } satisfies Result
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        const kind = classifyFailure(message)
-        failureCounts[kind] += 1
-        if (kind === 'rateLimitMin') {
-          // Back off globally and retry once.
-          setCooldown(COOLDOWN_MS)
+    const batchResults = await mapWithConcurrency(
+      freeIds,
+      CONCURRENCY,
+      async (openrouterModelId) => {
+        const runStartedAt = Date.now()
+        try {
           await waitForCooldown()
-          try {
-            const retryStartedAt = Date.now()
-            await generateTextWithModelId({
-              modelId: `openai/${openrouterModelId}`,
-              apiKeys,
-              prompt: 'Reply with a single word: OK',
-              temperature: 0,
-              maxOutputTokens: 16,
-              timeoutMs: TIMEOUT_MS,
-              fetchImpl,
-              forceOpenRouter: true,
-              retries: 0,
-            })
-            const retryLatencyMs = Date.now() - retryStartedAt
-            done += 1
-            okCount += 1
-            progress('tested')
-            const meta = idToMeta.get(openrouterModelId) ?? null
-            note(`${okLabel('ok')} ${openrouterModelId} ${dim(`(${formatMs(retryLatencyMs)})`)}`)
-            return {
-              ok: true,
-              value: {
-                openrouterModelId,
-                initialLatencyMs: retryLatencyMs,
-                medianLatencyMs: retryLatencyMs,
-                totalLatencyMs: retryLatencyMs,
-                successCount: 1,
-                contextLength: meta?.contextLength ?? null,
-                maxCompletionTokens: meta?.maxCompletionTokens ?? null,
-                supportedParametersCount: meta?.supportedParametersCount ?? 0,
-                modality: meta?.modality ?? null,
-                inferredParamB: meta?.inferredParamB ?? null,
-              },
-            } satisfies Result
-          } catch (retryError) {
-            // fall through to failure handling below
+          await generateTextWithModelId({
+            modelId: `openai/${openrouterModelId}`,
+            apiKeys,
+            prompt: 'Reply with a single word: OK',
+            temperature: 0,
+            maxOutputTokens: 16,
+            timeoutMs: TIMEOUT_MS,
+            fetchImpl,
+            forceOpenRouter: true,
+            retries: 0,
+          })
+
+          const latencyMs = Date.now() - runStartedAt
+          done += 1
+          okCount += 1
+          progress('tested')
+
+          const meta = idToMeta.get(openrouterModelId) ?? null
+          note(`${okLabel('ok')} ${openrouterModelId} ${dim(`(${formatMs(latencyMs)})`)}`)
+          return {
+            ok: true,
+            value: {
+              openrouterModelId,
+              initialLatencyMs: latencyMs,
+              medianLatencyMs: latencyMs,
+              totalLatencyMs: latencyMs,
+              successCount: 1,
+              contextLength: meta?.contextLength ?? null,
+              maxCompletionTokens: meta?.maxCompletionTokens ?? null,
+              supportedParametersCount: meta?.supportedParametersCount ?? 0,
+              modality: meta?.modality ?? null,
+              inferredParamB: meta?.inferredParamB ?? null,
+            },
+          } satisfies Result
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          const kind = classifyFailure(message)
+          failureCounts[kind] += 1
+          if (kind === 'rateLimitMin') {
+            // Back off globally and retry once.
+            setCooldown(COOLDOWN_MS)
+            await waitForCooldown()
+            try {
+              const retryStartedAt = Date.now()
+              await generateTextWithModelId({
+                modelId: `openai/${openrouterModelId}`,
+                apiKeys,
+                prompt: 'Reply with a single word: OK',
+                temperature: 0,
+                maxOutputTokens: 16,
+                timeoutMs: TIMEOUT_MS,
+                fetchImpl,
+                forceOpenRouter: true,
+                retries: 0,
+              })
+              const retryLatencyMs = Date.now() - retryStartedAt
+              done += 1
+              okCount += 1
+              progress('tested')
+              const meta = idToMeta.get(openrouterModelId) ?? null
+              note(`${okLabel('ok')} ${openrouterModelId} ${dim(`(${formatMs(retryLatencyMs)})`)}`)
+              return {
+                ok: true,
+                value: {
+                  openrouterModelId,
+                  initialLatencyMs: retryLatencyMs,
+                  medianLatencyMs: retryLatencyMs,
+                  totalLatencyMs: retryLatencyMs,
+                  successCount: 1,
+                  contextLength: meta?.contextLength ?? null,
+                  maxCompletionTokens: meta?.maxCompletionTokens ?? null,
+                  supportedParametersCount: meta?.supportedParametersCount ?? 0,
+                  modality: meta?.modality ?? null,
+                  inferredParamB: meta?.inferredParamB ?? null,
+                },
+              } satisfies Result
+            } catch {
+              // fall through to failure handling below
+            }
           }
+          done += 1
+          progress('tested')
+          if (verbose) {
+            note(`${failLabel('fail')} ${openrouterModelId} ${dim(`(${kind})`)}: ${message}`)
+          }
+          return { ok: false, openrouterModelId, error: message } satisfies Result
         }
-        done += 1
-        progress('tested')
-        if (verbose) {
-          note(`${failLabel('fail')} ${openrouterModelId} ${dim(`(${kind})`)}: ${message}`)
-        }
-        return { ok: false, openrouterModelId, error: message } satisfies Result
       }
-    })
+    )
 
     for (const r of batchResults) results.push(r)
   }
@@ -608,30 +619,26 @@ export async function refreshFree({
   }
 
   const buildSelection = (working: Ok[]) => {
-    const smartFirst = working
-      .slice()
-      .sort((a, b) => {
-        const aContext = a.contextLength ?? -1
-        const bContext = b.contextLength ?? -1
-        if (aContext !== bContext) return bContext - aContext
-        const aOut = a.maxCompletionTokens ?? -1
-        const bOut = b.maxCompletionTokens ?? -1
-        if (aOut !== bOut) return bOut - aOut
-        if (a.supportedParametersCount !== b.supportedParametersCount) {
-          return b.supportedParametersCount - a.supportedParametersCount
-        }
-        if (a.successCount !== b.successCount) return b.successCount - a.successCount
-        if (a.medianLatencyMs !== b.medianLatencyMs) return a.medianLatencyMs - b.medianLatencyMs
-        return a.openrouterModelId.localeCompare(b.openrouterModelId)
-      })
+    const smartFirst = working.slice().sort((a, b) => {
+      const aContext = a.contextLength ?? -1
+      const bContext = b.contextLength ?? -1
+      if (aContext !== bContext) return bContext - aContext
+      const aOut = a.maxCompletionTokens ?? -1
+      const bOut = b.maxCompletionTokens ?? -1
+      if (aOut !== bOut) return bOut - aOut
+      if (a.supportedParametersCount !== b.supportedParametersCount) {
+        return b.supportedParametersCount - a.supportedParametersCount
+      }
+      if (a.successCount !== b.successCount) return b.successCount - a.successCount
+      if (a.medianLatencyMs !== b.medianLatencyMs) return a.medianLatencyMs - b.medianLatencyMs
+      return a.openrouterModelId.localeCompare(b.openrouterModelId)
+    })
 
-    const fastFirst = working
-      .slice()
-      .sort((a, b) => {
-        if (a.successCount !== b.successCount) return b.successCount - a.successCount
-        if (a.medianLatencyMs !== b.medianLatencyMs) return a.medianLatencyMs - b.medianLatencyMs
-        return a.openrouterModelId.localeCompare(b.openrouterModelId)
-      })
+    const fastFirst = working.slice().sort((a, b) => {
+      if (a.successCount !== b.successCount) return b.successCount - a.successCount
+      if (a.medianLatencyMs !== b.medianLatencyMs) return a.medianLatencyMs - b.medianLatencyMs
+      return a.openrouterModelId.localeCompare(b.openrouterModelId)
+    })
 
     const picked = new Set<string>()
     const ordered: string[] = []
@@ -751,8 +758,7 @@ export async function refreshFree({
     const r = refinedById.get(modelId)
     if (!r) continue
     const avg = r.successCount > 0 ? r.totalLatencyMs / r.successCount : r.medianLatencyMs
-    const ctx =
-      typeof r.contextLength === 'number' ? `ctx=${formatTokenK(r.contextLength)}` : null
+    const ctx = typeof r.contextLength === 'number' ? `ctx=${formatTokenK(r.contextLength)}` : null
     const out =
       typeof r.maxCompletionTokens === 'number'
         ? `out=${formatTokenK(r.maxCompletionTokens)}`
@@ -760,8 +766,6 @@ export async function refreshFree({
     const modality = r.modality ? r.modality : null
     const params = typeof r.inferredParamB === 'number' ? `~${r.inferredParamB}B` : null
     const meta = [params, ctx, out, modality].filter(Boolean).join(' ')
-    stderr.write(
-      `- ${modelId} ${dim(`Δ ${formatMs(avg)} (n=${r.successCount})`)} ${dim(meta)}\n`
-    )
+    stderr.write(`- ${modelId} ${dim(`Δ ${formatMs(avg)} (n=${r.successCount})`)} ${dim(meta)}\n`)
   }
 }

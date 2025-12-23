@@ -45,7 +45,6 @@ import { parseGatewayStyleModelId } from './llm/model-id.js'
 import { convertToMarkdownWithMarkitdown, type ExecFileFn } from './markitdown.js'
 import { buildAutoModelAttempts } from './model-auto.js'
 import { type FixedModelSpec, parseRequestedModelId, type RequestedModel } from './model-spec.js'
-import { refreshFree } from './refresh-free.js'
 import {
   loadLiteLlmCatalog,
   resolveLiteLlmMaxInputTokensForModelId,
@@ -58,6 +57,7 @@ import {
   buildLinkSummaryPrompt,
   buildPathSummaryPrompt,
 } from './prompts/index.js'
+import { refreshFree } from './refresh-free.js'
 import type { SummaryLength } from './shared/contracts.js'
 import { startOscProgress } from './tty/osc-progress.js'
 import { startSpinner } from './tty/spinner.js'
@@ -1188,7 +1188,7 @@ export async function runCli(
     const readArgValue = (name: string): string | null => {
       const eq = normalizedArgv.find((a) => a.startsWith(`${name}=`))
       if (eq) return eq.slice(`${name}=`.length).trim() || null
-      const index = normalizedArgv.findIndex((a) => a === name)
+      const index = normalizedArgv.indexOf(name)
       if (index === -1) return null
       const next = normalizedArgv[index + 1]
       if (!next || next.startsWith('-')) return null
@@ -1216,11 +1216,11 @@ export async function runCli(
 
     if (help) {
       stdout.write(
-        [
+        `${[
           'Usage: summarize refresh-free [--runs 2] [--smart 3] [--min-params 27b] [--max-age-days 180] [--verbose]',
           '',
           'Writes ~/.summarize/config.json (models.free) with working OpenRouter :free candidates.',
-        ].join('\n') + '\n'
+        ].join('\n')}\n`
       )
       return
     }
