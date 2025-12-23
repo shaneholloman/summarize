@@ -1179,7 +1179,7 @@ export async function runCli(
 
   const normalizedArgv = argv.filter((arg) => arg !== '--')
   if (normalizedArgv[0]?.toLowerCase() === 'generate-free') {
-    throw new Error('Command renamed: use "summarize refresh-free" (no backwards compatibility).')
+    throw new Error('Unknown command "generate-free". Use "summarize refresh-free".')
   }
   if (normalizedArgv[0]?.toLowerCase() === 'refresh-free') {
     const verbose = normalizedArgv.includes('--verbose') || normalizedArgv.includes('--debug')
