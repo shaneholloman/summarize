@@ -6,7 +6,7 @@
 - Add `OPENAI_USE_CHAT_COMPLETIONS` + `openai.useChatCompletions` config toggle.
 - Add Z.AI live test coverage.
 - Document Z.AI + chat-completions toggle in README/docs.
-- Add output language control via `--language` / `--lang` and `language` config.
+- Add output language control via `--language` / `--lang` and `language` config (default: `auto`).
 - Podcast links: Apple Podcasts + RSS + Spotify episodes → Whisper transcript (full episodes; avoids preview clips when RSS enclosure exists).
 - Metrics: `--metrics on` now shows transcript length; `--metrics detailed` shows transcript duration/words + transcription source/provider; hide `calls=1`.
 - Progress: smarter elapsed formatting (`2m 42s`), rounded transfer rates, and better phase labels (transcription no longer looks like a stuck "Fetching website").

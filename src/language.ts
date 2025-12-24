@@ -8,6 +8,8 @@ export type OutputLanguage = {
 }
 
 const LANGUAGE_ALIASES: Record<string, OutputLanguage> = {
+  auto: { tag: 'auto', label: 'auto' },
+
   en: { tag: 'en', label: 'English' },
   'en-us': { tag: 'en-US', label: 'English' },
   'en-gb': { tag: 'en-GB', label: 'English' },
@@ -98,7 +100,7 @@ function titleCaseAscii(value: string): string {
 
 export function resolveOutputLanguage(raw: string | null | undefined): OutputLanguage {
   const normalized = (raw ?? '').trim()
-  if (!normalized) return { tag: 'en', label: 'English' }
+  if (!normalized) return { tag: 'auto', label: 'auto' }
 
   const compact = normalized
     .toLowerCase()
@@ -116,4 +118,3 @@ export function resolveOutputLanguage(raw: string | null | undefined): OutputLan
   const fallbackLabel = titleCaseAscii(normalized).slice(0, 48)
   return { tag: fallbackTag, label: fallbackLabel }
 }
-

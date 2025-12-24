@@ -21,7 +21,7 @@ For `language`:
 
 1. CLI flag `--language` / `--lang`
 2. Config file `language`
-3. Built-in default (`en` / English)
+3. Built-in default (`auto` = same as source content)
 
 See `docs/language.md` for supported values.
 

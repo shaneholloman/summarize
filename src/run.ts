@@ -480,7 +480,7 @@ function buildProgram() {
     )
     .option(
       '--language, --lang <language>',
-      'Output language (default: English). Examples: en, de, english, german, spanish.',
+      'Output language (default: auto). Examples: auto, en, de, english, german, spanish.',
       undefined
     )
     .option('--retries <count>', 'LLM retry attempts on timeout (default: 1).', '1')
@@ -1432,12 +1432,16 @@ export async function runCli(
       : modelArg
 
   const { config, path: configPath } = loadSummarizeConfig({ env })
+  const cliLanguageRaw =
+    typeof (program.opts() as { language?: unknown; lang?: unknown }).language === 'string'
+      ? ((program.opts() as { language?: string }).language as string)
+      : typeof (program.opts() as { lang?: unknown }).lang === 'string'
+        ? ((program.opts() as { lang?: string }).lang as string)
+        : null
   const resolvedLanguage = resolveOutputLanguage(
     languageExplicitlySet
-      ? ((program.opts().language as string | undefined) ?? null)
-      : ((config?.language as string | undefined) ??
-          (program.opts().language as string | undefined) ??
-          null)
+      ? cliLanguageRaw
+      : ((config?.language as string | undefined) ?? cliLanguageRaw)
   )
   const videoMode = parseVideoMode(
     videoModeExplicitlySet
