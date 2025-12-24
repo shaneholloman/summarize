@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   resolveTranscriptForLink: vi.fn(async () => ({
     text: 'Hello world\nSecond line',
     source: 'youtube',
+    metadata: { durationSeconds: 44 },
     diagnostics: {
       cacheMode: 'default',
       cacheStatus: 'miss',
@@ -61,5 +62,7 @@ describe('--metrics detailed', () => {
     expect(stderrText).toContain('calls=')
     expect(stderrText).toMatch(/\binput=/)
     expect(stderrText).toMatch(/\btranscript=/)
+    expect(stderrText).toMatch(/\btranscript=44s\b/)
+    expect(stderrText).toMatch(/\btranscript=.*\bwords\b/)
   })
 })

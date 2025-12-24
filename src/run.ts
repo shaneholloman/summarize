@@ -1157,6 +1157,20 @@ function formatCompactCount(value: number): string {
   return String(Math.floor(value))
 }
 
+function formatDurationSecondsSmart(value: number): string {
+  if (!Number.isFinite(value)) return 'unknown'
+  const totalSeconds = Math.max(0, Math.round(value))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  const parts: string[] = []
+  if (hours > 0) parts.push(`${hours}h`)
+  if (minutes > 0 || hours > 0) parts.push(`${minutes}m`)
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`)
+  return parts.join(' ')
+}
+
 function buildDetailedLengthPartsForExtracted(extracted: {
   url: string
   siteName: string | null
@@ -1164,6 +1178,8 @@ function buildDetailedLengthPartsForExtracted(extracted: {
   wordCount: number
   transcriptCharacters: number | null
   transcriptLines: number | null
+  transcriptWordCount: number | null
+  mediaDurationSeconds: number | null
 }): string[] {
   const parts: string[] = []
 
@@ -1176,13 +1192,27 @@ function buildDetailedLengthPartsForExtracted(extracted: {
   )
 
   if (typeof extracted.transcriptCharacters === 'number' && extracted.transcriptCharacters > 0) {
+    // Transcript stats:
+    // - `transcriptWordCount`: exact-ish (derived from transcript text after truncation budgeting)
+    // - `mediaDurationSeconds`: best-effort, sourced from provider metadata (e.g. RSS itunes:duration)
     const wordEstimate = Math.max(0, Math.round(extracted.transcriptCharacters / 6))
-    const minutesEstimate = Math.max(1, Math.round(wordEstimate / 160))
-    const details: string[] = [`${formatCompactCount(extracted.transcriptCharacters)} chars`]
+    const transcriptWords = extracted.transcriptWordCount ?? wordEstimate
+    const minutesEstimate = Math.max(1, Math.round(transcriptWords / 160))
+
+    const details: string[] = [
+      `~${formatCompactCount(transcriptWords)} words`,
+      `${formatCompactCount(extracted.transcriptCharacters)} chars`,
+    ]
     if (typeof extracted.transcriptLines === 'number' && extracted.transcriptLines > 0) {
       details.push(`${formatCompactCount(extracted.transcriptLines)} lines`)
     }
-    parts.push(`transcript=~${minutesEstimate}m (${details.join(', ')})`)
+
+    const durationPart =
+      typeof extracted.mediaDurationSeconds === 'number' && extracted.mediaDurationSeconds > 0
+        ? formatDurationSecondsSmart(extracted.mediaDurationSeconds)
+        : `~${minutesEstimate}m`
+
+    parts.push(`transcript=${durationPart} (${details.join(', ')})`)
   }
 
   return parts
