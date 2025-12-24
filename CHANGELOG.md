@@ -7,6 +7,7 @@
 - **Podcasts (full episodes)**
   - Support Apple Podcasts episode URLs via iTunes Lookup + enclosure transcription (avoids slow/blocked HTML).
   - Support Spotify episode URLs via the embed page (`/embed/episode/...`) to avoid recaptcha; fall back to iTunes RSS when embed audio is DRM/missing.
+  - Prefer local `whisper.cpp` when installed + model available (no API keys required for transcription).
   - Whisper transcription works for any media URL (audio/video containers), not just YouTube.
 - **Language**
   - Add `--language/--lang` (default: `auto`, match source language).
