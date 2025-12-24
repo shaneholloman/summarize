@@ -83,4 +83,24 @@ describe('cli twitter skip-summary branches', () => {
     expect(payload.summary).toBe('Short tweet text')
     expect(payload.input.url).toBe('https://twitter.com/x/status/123')
   })
+
+  it('prints a finish line when metrics are enabled (json)', async () => {
+    const stdout = collectStream()
+    const stderr = collectStream()
+
+    await runCli(
+      ['--json', '--metrics', 'detailed', '--timeout', '2s', 'https://twitter.com/x/status/123'],
+      {
+        env: {},
+        fetch: vi.fn() as unknown as typeof fetch,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    )
+
+    const payload = JSON.parse(stdout.getText())
+    expect(payload.llm).toBeNull()
+    expect(payload.metrics).not.toBeNull()
+    expect(stderr.getText()).toContain('·')
+  })
 })

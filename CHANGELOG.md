@@ -35,7 +35,7 @@
 
 ### Tests
 
-- Raise global branch coverage threshold to 80% and add regression coverage for podcast/language/progress paths.
+- Raise global branch coverage threshold to 75% and add regression coverage for podcast/language/progress paths.
 
 ## 0.5.0 - 2025-12-24
 
