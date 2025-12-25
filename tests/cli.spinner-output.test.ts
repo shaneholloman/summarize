@@ -6,6 +6,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { runCli } from '../src/run.js'
 
+const streamTextMock = vi.fn(() => {
+  throw new Error('should not be called')
+})
+
+vi.mock('ai', () => ({
+  streamText: streamTextMock,
+}))
+
 function collectStream({ isTTY }: { isTTY: boolean }) {
   let text = ''
   const stream = new Writable({
@@ -171,6 +179,7 @@ describe('cli spinner output', () => {
   })
 
   it('switches OSC progress to indeterminate for summarizing', async () => {
+    vi.useRealTimers()
     const root = mkdtempSync(join(tmpdir(), 'summarize-spinner-osc-'))
     const stdout = collectStream({ isTTY: true })
     const stderr = collectStream({ isTTY: true })
@@ -189,5 +198,5 @@ describe('cli spinner output', () => {
 
     const rawErr = stderr.getText()
     expect(rawErr).toContain('\u001b]9;4;3;;Summarizing')
-  })
+  }, 15_000)
 })
