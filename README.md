@@ -3,8 +3,9 @@
 Fast CLI for summarizing *anything you can point at*:
 
 - Web pages (article extraction; Firecrawl fallback if sites block agents)
-- YouTube links (best-effort transcripts, optional Apify fallback)
-- Podcast RSS feeds (best-effort: transcribes latest enclosure via Whisper when configured)
+- YouTube links (best-effort transcripts; can fall back to audio transcription)
+- Podcasts (Apple Podcasts / Spotify / RSS; prefers published transcripts when available; otherwise transcribes full episodes)
+- Any audio/video (local files or direct media URLs; transcribe via Whisper, then summarize)
 - Remote files (PDFs/images/audio/video via URL — downloaded and forwarded to the model)
 - Local files (PDFs/images/audio/video/text — forwarded or inlined; support depends on provider/model)
 
@@ -138,7 +139,6 @@ npx -y @steipete/summarize <input> [flags]
 - `--model <provider/model>`: which model to use (defaults to `auto`)
 - `--model auto`: automatic model selection + fallback (default)
 - `--model <name>`: use a config-defined model (see “Configuration”)
-- `--language <lang>` / `--lang <lang>`: output language (default `auto` = same as source content)
 - `--timeout <duration>`: `30s`, `2m`, `5000ms` (default `2m`)
 - `--retries <count>`: LLM retry attempts on timeout (default `1`)
 - `--length short|medium|long|xl|xxl|<chars>`
@@ -155,6 +155,25 @@ npx -y @steipete/summarize <input> [flags]
 - `--json`: machine-readable output with diagnostics, prompt, `metrics`, and optional summary
 - `--verbose`: debug/diagnostics on stderr
 - `--metrics off|on|detailed`: metrics output (default `on`; `detailed` adds a compact 2nd-line breakdown on stderr)
+
+## Translation paths
+
+`--language/--lang` controls the *output language* of the summary (and other LLM-generated text). Default is `auto` (match source language).
+
+When the input is audio/video, the CLI needs a transcript first. The transcript comes from one of these paths:
+
+1. **Existing transcript (preferred)**
+   - YouTube: uses captions / captionTracks when available.
+   - Podcasts: uses Podcasting 2.0 RSS `<podcast:transcript>` (JSON/VTT) when the feed publishes it.
+2. **Whisper transcription (fallback)**
+   - Prefers local `whisper.cpp` when installed + model available.
+   - Otherwise uses cloud Whisper (OpenAI `OPENAI_API_KEY`) or FAL (`FAL_KEY`) depending on configuration.
+
+For “any video/audio file” (local path or direct media URL), use `--video-mode transcript` to force “transcribe → summarize”:
+
+```bash
+summarize /path/to/file.mp4 --video-mode transcript --lang en
+```
 
 ## Auto model ordering
 
