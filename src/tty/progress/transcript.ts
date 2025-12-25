@@ -6,11 +6,14 @@ import {
   formatDurationSecondsSmart,
   formatElapsedMs,
 } from '../format.js'
+import type { OscProgressController } from '../osc-progress.js'
 
 export function createTranscriptProgressRenderer({
   spinner,
+  oscProgress,
 }: {
   spinner: { setText: (text: string) => void }
+  oscProgress?: OscProgressController | null
 }): {
   stop: () => void
   onProgress: (event: LinkPreviewProgressEvent) => void
@@ -50,6 +53,16 @@ export function createTranscriptProgressRenderer({
     if (!options?.force && now - state.lastSpinnerUpdateAtMs < 100) return
     state.lastSpinnerUpdateAtMs = now
     spinner.setText(text)
+  }
+
+  const updateOscIndeterminate = (label: string) => {
+    if (!oscProgress) return
+    oscProgress.setIndeterminate(label)
+  }
+
+  const updateOscPercent = (label: string, percent: number) => {
+    if (!oscProgress) return
+    oscProgress.setPercent(label, percent)
   }
 
   const stopTicker = () => {
@@ -133,6 +146,7 @@ export function createTranscriptProgressRenderer({
         stopTicker()
         startTicker(renderDownloadLine)
         updateSpinner('Downloading audio…', { force: true })
+        updateOscIndeterminate('Downloading audio')
         return
       }
 
@@ -142,6 +156,11 @@ export function createTranscriptProgressRenderer({
         state.downloadedBytes = event.downloadedBytes
         state.totalBytes = event.totalBytes
         updateSpinner(renderDownloadLine())
+        if (typeof state.totalBytes === 'number' && state.totalBytes > 0) {
+          updateOscPercent('Downloading audio', (state.downloadedBytes / state.totalBytes) * 100)
+        } else {
+          updateOscIndeterminate('Downloading audio')
+        }
         return
       }
 
@@ -168,6 +187,11 @@ export function createTranscriptProgressRenderer({
         stopTicker()
         startTicker(renderWhisperLine)
         updateSpinner(renderWhisperLine(), { force: true })
+        if (typeof state.whisperTotalSeconds === 'number' && state.whisperTotalSeconds > 0) {
+          updateOscPercent('Transcribing', 0)
+        } else {
+          updateOscIndeterminate('Transcribing')
+        }
         return
       }
 
@@ -179,11 +203,24 @@ export function createTranscriptProgressRenderer({
         state.whisperPartIndex = event.partIndex
         state.whisperParts = event.parts
         updateSpinner(renderWhisperLine())
+        if (
+          typeof state.whisperProcessedSeconds === 'number' &&
+          typeof state.whisperTotalSeconds === 'number' &&
+          state.whisperTotalSeconds > 0
+        ) {
+          updateOscPercent(
+            'Transcribing',
+            (state.whisperProcessedSeconds / state.whisperTotalSeconds) * 100
+          )
+        } else {
+          updateOscIndeterminate('Transcribing')
+        }
         return
       }
 
       if (event.kind === 'transcript-done') {
         stopTicker()
+        oscProgress?.clear()
         updateSpinner(event.ok ? 'Transcribed…' : 'Transcript failed; fallback…', { force: true })
       }
     },

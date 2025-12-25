@@ -70,7 +70,7 @@ import {
   formatDurationSecondsSmart,
   formatElapsedMs,
 } from './tty/format.js'
-import { startOscProgress } from './tty/osc-progress.js'
+import { createOscProgressController, startOscProgress } from './tty/osc-progress.js'
 import { startSpinner } from './tty/spinner.js'
 import { createWebsiteProgress } from './tty/website-progress.js'
 import { resolvePackageVersion } from './version.js'
@@ -3262,19 +3262,23 @@ export async function runCli(
     : null
 
   writeVerbose(stderr, verbose, 'extract start', verboseColor)
-  const stopOscProgress = startOscProgress({
+  const oscProgress = createOscProgressController({
     label: 'Fetching website',
-    indeterminate: true,
     env,
     isTty: progressEnabled,
     write: (data: string) => stderr.write(data),
   })
+  oscProgress.setIndeterminate('Fetching website')
   const spinner = startSpinner({
     text: 'Fetching website (connecting)…',
     enabled: progressEnabled,
     stream: stderr,
   })
-  const websiteProgress = createWebsiteProgress({ enabled: progressEnabled, spinner })
+  const websiteProgress = createWebsiteProgress({
+    enabled: progressEnabled,
+    spinner,
+    oscProgress,
+  })
 
   const client = createLinkPreviewClient({
     apifyApiToken: apifyToken,
@@ -3293,7 +3297,7 @@ export async function runCli(
     stopped = true
     websiteProgress?.stop?.()
     spinner.stopAndClear()
-    stopOscProgress()
+    oscProgress.clear()
   }
   clearProgressBeforeStdout = stopProgress
   try {

@@ -1,11 +1,13 @@
 import type { LinkPreviewProgressEvent } from '../../content/link-preview/deps.js'
-
 import { formatBytes, formatBytesPerSecond, formatElapsedMs } from '../format.js'
+import type { OscProgressController } from '../osc-progress.js'
 
 export function createFetchHtmlProgressRenderer({
   spinner,
+  oscProgress,
 }: {
   spinner: { setText: (text: string) => void }
+  oscProgress?: OscProgressController | null
 }): {
   stop: () => void
   onProgress: (event: LinkPreviewProgressEvent) => void
@@ -64,6 +66,7 @@ export function createFetchHtmlProgressRenderer({
 
   const freeze = () => {
     stopTicker()
+    oscProgress?.clear()
     updateSpinner(render(), { force: true })
   }
 
@@ -76,6 +79,7 @@ export function createFetchHtmlProgressRenderer({
         state.startedAtMs = Date.now()
         startTicker()
         updateSpinner('Fetching website (connecting)…')
+        oscProgress?.setIndeterminate('Fetching website')
         return
       }
 
@@ -83,6 +87,14 @@ export function createFetchHtmlProgressRenderer({
         state.downloadedBytes = event.downloadedBytes
         state.totalBytes = event.totalBytes
         updateSpinner(render())
+        if (typeof state.totalBytes === 'number' && state.totalBytes > 0) {
+          oscProgress?.setPercent(
+            'Fetching website',
+            (state.downloadedBytes / state.totalBytes) * 100
+          )
+        } else {
+          oscProgress?.setIndeterminate('Fetching website')
+        }
         return
       }
 

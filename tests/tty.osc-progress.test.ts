@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { startOscProgress, supportsOscProgress } from '../src/tty/osc-progress.js'
+import {
+  createOscProgressController,
+  startOscProgress,
+  supportsOscProgress,
+} from '../src/tty/osc-progress.js'
 
 describe('osc-progress', () => {
   it('detects support based on env + tty', () => {
@@ -50,5 +54,23 @@ describe('osc-progress', () => {
     expect(writes[writes.length - 1]).toContain('\u001b]9;4;0;0;Fetching\u001b\\')
 
     vi.useRealTimers()
+  })
+
+  it('supports stateful updates via createOscProgressController', () => {
+    const writes: string[] = []
+    const osc = createOscProgressController({
+      env: { TERM_PROGRAM: 'wezterm' },
+      isTty: true,
+      label: 'Init',
+      write: (data) => writes.push(data),
+    })
+
+    osc.setIndeterminate('Waiting')
+    osc.setPercent('Transcribing', 50)
+    osc.clear()
+
+    expect(writes[0]).toContain(']9;4;3;;Waiting')
+    expect(writes[1]).toContain(']9;4;1;50;Transcribing')
+    expect(writes[2]).toContain(']9;4;0;0;Transcribing')
   })
 })

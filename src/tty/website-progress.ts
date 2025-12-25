@@ -1,23 +1,26 @@
 import type { LinkPreviewProgressEvent } from '../content/link-preview/deps.js'
 
 import { formatBytes } from './format.js'
+import type { OscProgressController } from './osc-progress.js'
 import { createFetchHtmlProgressRenderer } from './progress/fetch-html.js'
 import { createTranscriptProgressRenderer } from './progress/transcript.js'
 
 export function createWebsiteProgress({
   enabled,
   spinner,
+  oscProgress,
 }: {
   enabled: boolean
   spinner: { setText: (text: string) => void }
+  oscProgress?: OscProgressController | null
 }): {
   stop: () => void
   onProgress: (event: LinkPreviewProgressEvent) => void
 } | null {
   if (!enabled) return null
 
-  const fetchRenderer = createFetchHtmlProgressRenderer({ spinner })
-  const transcriptRenderer = createTranscriptProgressRenderer({ spinner })
+  const fetchRenderer = createFetchHtmlProgressRenderer({ spinner, oscProgress })
+  const transcriptRenderer = createTranscriptProgressRenderer({ spinner, oscProgress })
 
   const stopAll = () => {
     fetchRenderer.stop()
