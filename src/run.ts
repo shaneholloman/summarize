@@ -2414,6 +2414,7 @@ export async function runCli(
               }),
             maxRows: terminalHeight(stdout, env),
             clearOnOverflow: true,
+            clearScrollbackOnOverflow: true,
             onOverflow: () => {
               liveOverflowed = true
             },
