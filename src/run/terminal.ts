@@ -6,8 +6,9 @@ export function supportsColor(
   stream: NodeJS.WritableStream,
   env: Record<string, string | undefined>
 ): boolean {
+  // Explicit override always wins.
+  if (env.FORCE_COLOR) return env.FORCE_COLOR !== '0'
   if (env.NO_COLOR) return false
-  if (env.FORCE_COLOR && env.FORCE_COLOR !== '0') return true
   if (!isRichTty(stream)) return false
   const term = env.TERM?.toLowerCase()
   if (!term || term === 'dumb') return false

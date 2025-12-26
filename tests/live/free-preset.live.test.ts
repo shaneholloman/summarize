@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { runCli } from '../../src/run.js'
 
 const LIVE = process.env.SUMMARIZE_LIVE_TEST === '1'
+const ANSI_SGR_RE = /\u001b\[[0-9;]*m/
 
 function shouldSoftSkipLiveError(message: string): boolean {
   return /(rate limit exceeded|free-models-per-min|free-models-per-day|no working :free models|no :free models)/i.test(
@@ -44,7 +45,13 @@ const silentStderr = new Writable({
       }
 
       const home = await fs.mkdtemp(path.join(os.tmpdir(), 'summarize-live-free-'))
-      const env = { ...process.env, HOME: home, OPENROUTER_API_KEY }
+      const env = {
+        ...process.env,
+        HOME: home,
+        OPENROUTER_API_KEY,
+        TERM: process.env.TERM ?? 'xterm-256color',
+        FORCE_COLOR: process.env.FORCE_COLOR ?? '1',
+      }
 
       try {
         const refreshOut = collectStream()
@@ -99,7 +106,13 @@ const silentStderr = new Writable({
       }
 
       const home = await fs.mkdtemp(path.join(os.tmpdir(), 'summarize-live-free-stream-'))
-      const env = { ...process.env, HOME: home, OPENROUTER_API_KEY }
+      const env = {
+        ...process.env,
+        HOME: home,
+        OPENROUTER_API_KEY,
+        TERM: process.env.TERM ?? 'xterm-256color',
+        FORCE_COLOR: process.env.FORCE_COLOR ?? '1',
+      }
 
       try {
         const refreshOut = collectStream()
@@ -126,7 +139,7 @@ const silentStderr = new Writable({
         )
 
         const text = out.getText()
-        expect(text).toMatch(/\\x1b\\[[0-9;]*m/)
+        expect(text).toMatch(ANSI_SGR_RE)
         expect(text).not.toContain('\u001b[?2026h')
         expect(text).not.toContain('\u001b[?2026l')
       } catch (error) {

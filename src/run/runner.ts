@@ -49,7 +49,7 @@ export async function runCli(
 
   const normalizedArgv = argv.filter((arg) => arg !== '--')
   const noColorFlag = normalizedArgv.includes('--no-color')
-  const envForRun = noColorFlag ? { ...env, NO_COLOR: '1' } : env
+  const envForRun = noColorFlag ? { ...env, NO_COLOR: '1', FORCE_COLOR: '0' } : env
 
   if (handleHelpRequest({ normalizedArgv, envForRun, stdout, stderr })) {
     return
