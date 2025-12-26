@@ -6,14 +6,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { runCli } from '../src/run.js'
 
-const { renderMock } = vi.hoisted(() => ({
-  renderMock: vi.fn((markdown: string) => markdown),
-}))
-
-vi.mock('markdansi', () => ({
-  render: renderMock,
-}))
-
 function createTextStream(chunks: string[]): AsyncIterable<string> {
   return {
     async *[Symbol.asyncIterator]() {
@@ -64,7 +56,6 @@ function collectChunks() {
 
 describe('cli streamed markdown write semantics', () => {
   it('buffers until newline and writes complete lines only', async () => {
-    renderMock.mockClear()
     streamTextMock.mockClear()
     createOpenAIMock.mockClear()
 

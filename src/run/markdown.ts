@@ -37,6 +37,12 @@ export function prepareMarkdownLineForTerminal(line: string): string {
   })
 }
 
+export function prepareMarkdownForTerminalStreaming(markdown: string): string {
+  // Streaming is append-only; never rewrite earlier content (e.g. reference-style links).
+  // Only apply local, fence-aware transformations.
+  return materializeInlineMarkdownLinks(markdown)
+}
+
 function inlineReferenceStyleLinks(markdown: string): string {
   // Some models like emitting reference-style links:
   //   [Label][1]

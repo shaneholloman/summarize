@@ -1,13 +1,13 @@
 import type { ModelMessage } from 'ai'
 import { countTokens } from 'gpt-tokenizer'
-import { render as renderMarkdownAnsi } from 'markdansi'
+import { createMarkdownStreamer, render as renderMarkdownAnsi } from 'markdansi'
 import type { CliProvider } from '../config.js'
 import { isCliDisabled, runCliModel } from '../llm/cli.js'
 import { streamTextWithModelId } from '../llm/generate-text.js'
 import { parseGatewayStyleModelId } from '../llm/model-id.js'
 import { formatCompactCount } from '../tty/format.js'
 import { createRetryLogger, writeVerbose } from './logging.js'
-import { prepareMarkdownLineForTerminal } from './markdown.js'
+import { prepareMarkdownForTerminalStreaming } from './markdown.js'
 import {
   isGoogleStreamingUnsupportedError,
   isStreamingTimeoutError,
@@ -374,55 +374,18 @@ export function createSummaryEngine(deps: SummaryEngineDeps) {
 	      let streamedRaw = ''
 	      const liveWidth = markdownRenderWidth(deps.stdout, deps.env)
 
-      let markdownFlushedLen = 0
-      let markdownFence = false
-      let renderedStarted = false
-
-      const renderLine = (line: string): string => {
-        const trimmed = line.trimStart()
-        const isFence = trimmed.startsWith('```')
-        if (isFence) {
-          markdownFence = !markdownFence
-          return `${line}\n`
-        }
-        if (markdownFence) return `${line}\n`
-
-        // Keep reference definitions stable in streaming mode; they can affect earlier lines.
-        if (/^\s*\[[^\]]+\]:\s*\S+/.test(line)) return `${line}\n`
-
-        if (!line) return '\n'
-
-        const rendered = renderMarkdownAnsi(prepareMarkdownLineForTerminal(line), {
-          width: liveWidth,
-          wrap: true,
-          color: supportsColor(deps.stdout, deps.envForRun),
-          hyperlinks: true,
-        })
-        const normalized = rendered.replace(/^\n+/, '')
-        return normalized.endsWith('\n') ? normalized : `${normalized}\n`
-      }
-
-      const flushRenderedLines = (markdown: string, { final }: { final: boolean }) => {
-        const lastNl = markdown.lastIndexOf('\n')
-        const upto = final ? markdown.length : lastNl >= 0 ? lastNl + 1 : 0
-        if (upto <= markdownFlushedLen) return
-        const chunk = markdown.slice(markdownFlushedLen, upto)
-        markdownFlushedLen = upto
-        if (!chunk) return
-
-        deps.clearProgressForStdout()
-        const lines = chunk.split('\n')
-        const trailing = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!renderedStarted && line.length === 0) continue
-          renderedStarted = true
-          deps.stdout.write(renderLine(line))
-        }
-        if (final && trailing.length > 0) {
-          renderedStarted = true
-          deps.stdout.write(renderLine(trailing))
-        }
-      }
+      const streamer = shouldStreamRenderedMarkdownToStdout
+        ? createMarkdownStreamer({
+            render: (markdown) =>
+              renderMarkdownAnsi(prepareMarkdownForTerminalStreaming(markdown), {
+                width: liveWidth,
+                wrap: true,
+                color: supportsColor(deps.stdout, deps.envForRun),
+                hyperlinks: true,
+              }),
+            spacing: 'single',
+          })
+        : null
 
 	      try {
 	        let cleared = false
@@ -446,7 +409,13 @@ export function createSummaryEngine(deps: SummaryEngineDeps) {
 	            continue
 	          }
 
-          if (shouldStreamRenderedMarkdownToStdout) flushRenderedLines(streamed, { final: false })
+          if (shouldStreamRenderedMarkdownToStdout && streamer) {
+            const out = streamer.push(merged.appended)
+            if (out) {
+              deps.clearProgressForStdout()
+              deps.stdout.write(out)
+            }
+          }
 	        }
 
 	        streamedRaw = streamed
@@ -454,7 +423,11 @@ export function createSummaryEngine(deps: SummaryEngineDeps) {
 	        streamed = trimmed
 	      } finally {
 	        if (shouldStreamRenderedMarkdownToStdout) {
-	          flushRenderedLines(streamedRaw || streamed, { final: true })
+            const out = streamer?.finish()
+            if (out) {
+              deps.clearProgressForStdout()
+              deps.stdout.write(out)
+            }
           summaryAlreadyPrinted = true
         }
       }
