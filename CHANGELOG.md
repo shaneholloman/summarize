@@ -7,6 +7,7 @@
 - Streaming: scrollback-safe Markdown streaming (hybrid: line-by-line + block buffering for fenced code + tables). No cursor control, no full-frame redraws.
 - Output: Markdown rendering is automatic on TTY; use `--plain` for raw Markdown/text output.
 - Finish line: compact separators (`·`) and no duplicated `… words` when transcript stats are shown.
+- YouTube: `--youtube auto` prefers `yt-dlp` transcription when available; Apify is last-last resort.
 
 ### Fixed
 
@@ -244,7 +245,7 @@ First public release.
   - `--length short|medium|long|xl|xxl|<chars>` (guideline; no hard truncation)
   - `--max-output-tokens <count>` (optional hard cap)
   - `--timeout <duration>` (default `2m`)
-  - `--stream auto|on|off`, `--render auto|md-live|md|plain`
+  - `--stream auto|on|off`, `--render auto|md|plain`
   - `--extract` (URLs only; no summary)
   - `--json` (structured output incl. input config, prompt, extracted content, LLM metadata, and metrics)
   - `--metrics off|on|detailed` (default `on`)

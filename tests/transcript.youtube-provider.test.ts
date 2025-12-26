@@ -126,13 +126,7 @@ describe('YouTube transcript provider module', () => {
       }
     )
 
-    expect(result.attemptedProviders).toEqual([
-      'youtubei',
-      'captionTracks',
-      'apify',
-      'yt-dlp',
-      'unavailable',
-    ])
+    expect(result.attemptedProviders).toEqual(['youtubei', 'captionTracks', 'yt-dlp', 'unavailable'])
   })
 
   it('skips yt-dlp in auto mode when credentials are missing', async () => {
@@ -150,8 +144,32 @@ describe('YouTube transcript provider module', () => {
       }
     )
 
-    expect(result.attemptedProviders).toEqual(['captionTracks', 'apify', 'unavailable'])
+    expect(result.attemptedProviders).toEqual(['captionTracks', 'unavailable'])
     expect(ytdlp.fetchTranscriptWithYtDlp).not.toHaveBeenCalled()
+    expect(apify.fetchTranscriptWithApify).not.toHaveBeenCalled()
+  })
+
+  it('tries yt-dlp before apify in auto mode (apify last resort)', async () => {
+    api.extractYoutubeiTranscriptConfig.mockReturnValue(null)
+    apify.fetchTranscriptWithApify.mockResolvedValue('Hello from apify')
+
+    const result = await fetchTranscript(
+      {
+        url: 'https://www.youtube.com/watch?v=abcdefghijk',
+        html: '<html></html>',
+        resourceKey: null,
+      },
+      {
+        ...baseOptions,
+        apifyApiToken: 'TOKEN',
+        youtubeTranscriptMode: 'auto',
+        ytDlpPath: '/usr/bin/yt-dlp',
+        openaiApiKey: 'OPENAI',
+      }
+    )
+
+    expect(result.source).toBe('apify')
+    expect(result.attemptedProviders).toEqual(['captionTracks', 'yt-dlp', 'apify'])
   })
 
   it('errors in yt-dlp mode when transcription keys are missing', async () => {

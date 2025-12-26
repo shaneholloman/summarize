@@ -181,9 +181,10 @@ Transcription: prefers local `whisper.cpp` when installed; otherwise uses OpenAI
 When the input is audio/video, the CLI needs a transcript first. The transcript comes from one of these paths:
 
 1. **Existing transcript (preferred)**
-   - YouTube: uses captions / captionTracks when available.
+   - YouTube: uses `youtubei` / `captionTracks` when available.
    - Podcasts: uses Podcasting 2.0 RSS `<podcast:transcript>` (JSON/VTT) when the feed publishes it.
 2. **Whisper transcription (fallback)**
+   - YouTube: falls back to `yt-dlp` (audio download) + Whisper transcription when configured; Apify is a last-last resort (requires `APIFY_API_TOKEN`).
    - Prefers local `whisper.cpp` when installed + model available.
    - Otherwise uses cloud Whisper (OpenAI `OPENAI_API_KEY`) or FAL (`FAL_KEY`) depending on configuration.
 
