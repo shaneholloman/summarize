@@ -7,4 +7,7 @@ const __dirname = path.dirname(__filename)
 
 const cjsDir = path.resolve(__dirname, '..', 'dist', 'cjs')
 await mkdir(cjsDir, { recursive: true })
-await writeFile(path.join(cjsDir, 'package.json'), JSON.stringify({ type: 'commonjs' }, null, 2) + '\n')
+await writeFile(
+  path.join(cjsDir, 'package.json'),
+  `${JSON.stringify({ type: 'commonjs' }, null, 2)}\n`
+)
