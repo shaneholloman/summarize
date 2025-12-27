@@ -3,6 +3,7 @@
 
   --bg: #0b0c12;
   --bg2: #06070b;
+  --bgTop: #0e1220;
   --panel: rgba(16, 19, 34, 0.85);
   --surface: rgba(10, 12, 20, 0.65);
   --border: rgba(255, 255, 255, 0.12);
@@ -17,11 +18,12 @@
   :root {
     --bg: #f7f7fb;
     --bg2: #eef1f7;
+    --bgTop: #ffffff;
     --panel: rgba(255, 255, 255, 0.92);
     --surface: rgba(255, 255, 255, 0.86);
     --border: rgba(12, 18, 40, 0.14);
     --text: #0d1220;
-    --muted: rgba(13, 18, 32, 0.62);
+    --muted: rgba(13, 18, 32, 0.8);
     --accent: #0a7b8d;
   }
 }
@@ -37,7 +39,7 @@ body {
   background:
     radial-gradient(900px 520px at 18% -10%, rgba(122, 228, 243, 0.18), transparent 55%),
     radial-gradient(900px 520px at 92% 10%, rgba(243, 198, 122, 0.18), transparent 55%),
-    linear-gradient(180deg, #0e1220 0%, var(--bg) 70%, var(--bg2) 100%);
+    linear-gradient(180deg, var(--bgTop) 0%, var(--bg) 70%, var(--bg2) 100%);
 }
 
 main {
