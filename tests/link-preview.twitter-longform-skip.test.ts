@@ -48,7 +48,7 @@ describe('twitter long-form transcript skip', () => {
     const result = await fetchLinkContent(
       'https://x.com/user/status/123',
       { format: 'text' },
-      createDeps('x'.repeat(1200))
+      createDeps('x'.repeat(600))
     )
 
     expect(mocks.resolveTranscriptForLink).not.toHaveBeenCalled()

@@ -28,7 +28,7 @@ import {
   selectBaseContent,
 } from './utils.js'
 
-const MAX_TWITTER_TEXT_FOR_TRANSCRIPT = 1000
+const MAX_TWITTER_TEXT_FOR_TRANSCRIPT = 500
 
 const buildSkippedTwitterTranscript = (
   cacheMode: CacheMode,
