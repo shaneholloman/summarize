@@ -44,11 +44,11 @@ function byId<T extends HTMLElement>(id: string): T {
 }
 
 const subtitleEl = byId<HTMLDivElement>('subtitle')
+const headerEl = document.querySelector('header') as HTMLElement
+if (!headerEl) throw new Error('Missing <header>')
+const progressFillEl = byId<HTMLDivElement>('progressFill')
 const drawerEl = byId<HTMLElement>('drawer')
 const setupEl = byId<HTMLDivElement>('setup')
-const statusEl = byId<HTMLDivElement>('status')
-const statusTextEl = byId<HTMLSpanElement>('statusText')
-const statusPctEl = byId<HTMLSpanElement>('statusPct')
 const renderEl = byId<HTMLElement>('render')
 const metricsEl = byId<HTMLDivElement>('metrics')
 
@@ -74,6 +74,8 @@ let streamController: AbortController | null = null
 let streamedAnyNonWhitespace = false
 let rememberedUrl = false
 let streaming = false
+let baseSubtitle = ''
+let statusText = ''
 
 function ensureSelectValue(select: HTMLSelectElement, value: unknown): string {
   const normalized = typeof value === 'string' ? value.trim() : ''
@@ -97,15 +99,45 @@ function ensureSelectValue(select: HTMLSelectElement, value: unknown): string {
   return normalized
 }
 
-function setStatus(text: string) {
-  const split = splitStatusPercent(text)
-  statusTextEl.textContent = split.text
-  statusPctEl.textContent = split.percent ?? ''
+function setBaseSubtitle(text: string) {
+  baseSubtitle = text
+  updateHeader()
+}
 
-  const isError = text.toLowerCase().startsWith('error:') || text.toLowerCase().includes(' error')
-  statusEl.classList.toggle('error', isError)
-  statusEl.classList.toggle('running', Boolean(text.trim()) && !isError)
-  statusEl.classList.toggle('hidden', !text.trim())
+function setStatus(text: string) {
+  statusText = text
+  updateHeader()
+}
+
+function updateHeader() {
+  const trimmed = statusText.trim()
+  const showStatus = trimmed.length > 0
+  const split = showStatus
+    ? splitStatusPercent(trimmed)
+    : { text: '', percent: null as string | null }
+  const percentNum = split.percent ? Number.parseInt(split.percent, 10) : null
+  const isError =
+    showStatus &&
+    (trimmed.toLowerCase().startsWith('error:') || trimmed.toLowerCase().includes(' error'))
+
+  headerEl.classList.toggle('isError', isError)
+  headerEl.classList.toggle('isRunning', showStatus && !isError)
+  headerEl.classList.toggle('isIndeterminate', showStatus && !isError && percentNum == null)
+
+  if (
+    !isError &&
+    percentNum != null &&
+    Number.isFinite(percentNum) &&
+    percentNum >= 0 &&
+    percentNum <= 100
+  ) {
+    headerEl.style.setProperty('--progress', `${percentNum}%`)
+  } else {
+    headerEl.style.setProperty('--progress', '0%')
+  }
+
+  progressFillEl.style.display = showStatus ? '' : 'none'
+  subtitleEl.textContent = showStatus ? split.text || trimmed : baseSubtitle
 }
 
 window.addEventListener('error', (event) => {
@@ -260,7 +292,7 @@ function updateControls(state: UiState) {
   if (currentSource && state.tab.url && state.tab.url !== currentSource.url && !streaming) {
     currentSource = null
   }
-  if (!currentSource) subtitleEl.textContent = state.tab.title || state.tab.url || ''
+  if (!currentSource) setBaseSubtitle(state.tab.title || state.tab.url || '')
   setStatus(state.status)
   maybeShowSetup(state)
 }
@@ -361,7 +393,7 @@ async function startStream(run: RunStart) {
   metricsEl.classList.add('hidden')
   metricsEl.removeAttribute('data-details')
   metricsEl.removeAttribute('title')
-  subtitleEl.textContent = run.title || run.url
+  setBaseSubtitle(run.title || run.url)
   setStatus('Connecting…')
 
   try {
@@ -395,7 +427,7 @@ async function startStream(run: RunStart) {
       } else if (msg.event === 'meta') {
         const data = JSON.parse(msg.data) as { model: string }
         const title = currentSource?.title || currentState?.tab.title || 'Current tab'
-        subtitleEl.textContent = `${title} · ${data.model}`
+        setBaseSubtitle(`${title} · ${data.model}`)
       } else if (msg.event === 'status') {
         const data = JSON.parse(msg.data) as { text: string }
         if (!streamedAnyNonWhitespace) setStatus(data.text)

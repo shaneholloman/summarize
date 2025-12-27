@@ -22,6 +22,9 @@
           </svg>
         </button>
       </div>
+      <div id="progress" class="progress" aria-hidden="true">
+        <div id="progressFill" class="progressFill"></div>
+      </div>
     </header>
 
     <section id="drawer" class="drawer hidden" aria-label="Controls">
@@ -68,10 +71,6 @@
 
     <main>
       <div id="setup" class="setup hidden"></div>
-      <div id="status" class="status hidden">
-        <span id="statusText"></span>
-        <span id="statusPct" class="statusPct"></span>
-      </div>
       <article id="render" class="render"></article>
       <div id="metrics" class="metrics hidden"></div>
       <pre id="raw" class="raw hidden"></pre>
