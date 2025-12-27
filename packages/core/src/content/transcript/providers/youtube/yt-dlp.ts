@@ -92,7 +92,23 @@ export const fetchTranscriptWithYtDlp = async ({
       mediaUrl: url,
       totalBytes: null,
     })
-    await downloadAudio(ytDlpPath, url, outputFile, extraArgs)
+    await downloadAudio(
+      ytDlpPath,
+      url,
+      outputFile,
+      extraArgs,
+      progress
+        ? (downloadedBytes, totalBytes) => {
+            progress({
+              kind: ProgressKind.TranscriptMediaDownloadProgress,
+              url,
+              service,
+              downloadedBytes,
+              totalBytes,
+            })
+          }
+        : null
+    )
     const stat = await fs.stat(outputFile)
     progress?.({
       kind: ProgressKind.TranscriptMediaDownloadDone,
@@ -149,9 +165,12 @@ async function downloadAudio(
   ytDlpPath: string,
   url: string,
   outputFile: string,
-  extraArgs?: string[]
+  extraArgs?: string[],
+  onProgress?: ((downloadedBytes: number, totalBytes: number | null) => void) | null
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const progressTemplate =
+      'progress:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s'
     const args = [
       '-x',
       '--audio-format',
@@ -160,21 +179,42 @@ async function downloadAudio(
       '--retries',
       '3',
       '--no-warnings',
+      ...(onProgress ? ['--progress', '--newline', '--progress-template', progressTemplate] : []),
       ...(extraArgs?.length ? extraArgs : []),
       '-o',
       outputFile,
       url,
     ]
 
-    const proc = spawn(ytDlpPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    const proc = spawn(ytDlpPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     let stderr = ''
+    let progressBuffer = ''
+
+    const handleProgressChunk = (chunk: string) => {
+      if (!onProgress) return
+      progressBuffer += chunk
+      const lines = progressBuffer.split(/\r?\n/)
+      progressBuffer = lines.pop() ?? ''
+      for (const line of lines) {
+        emitProgressFromLine(line, onProgress)
+      }
+    }
+
+    if (proc.stdout) {
+      proc.stdout.setEncoding('utf8')
+      proc.stdout.on('data', (chunk: string) => {
+        handleProgressChunk(chunk)
+      })
+    }
 
     if (proc.stderr) {
       proc.stderr.setEncoding('utf8')
       proc.stderr.on('data', (chunk: string) => {
-        if (stderr.length >= MAX_STDERR_BYTES) return
-        const remaining = MAX_STDERR_BYTES - stderr.length
-        stderr += chunk.slice(0, remaining)
+        if (stderr.length < MAX_STDERR_BYTES) {
+          const remaining = MAX_STDERR_BYTES - stderr.length
+          stderr += chunk.slice(0, remaining)
+        }
+        handleProgressChunk(chunk)
       })
     }
 
@@ -184,6 +224,9 @@ async function downloadAudio(
     }, YT_DLP_TIMEOUT_MS)
 
     proc.on('close', (code, signal) => {
+      if (onProgress && progressBuffer.trim().length > 0) {
+        emitProgressFromLine(progressBuffer, onProgress)
+      }
       clearTimeout(timeout)
       if (code === 0) {
         resolve()
@@ -203,6 +246,27 @@ async function downloadAudio(
       reject(error)
     })
   })
+}
+
+function emitProgressFromLine(
+  line: string,
+  onProgress: (downloadedBytes: number, totalBytes: number | null) => void
+): void {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith('progress:')) return
+  const payload = trimmed.slice('progress:'.length)
+  const [downloadedRaw, totalRaw, estimateRaw] = payload.split('|')
+  const downloaded = Number.parseFloat(downloadedRaw)
+  if (!Number.isFinite(downloaded) || downloaded < 0) return
+  const totalCandidate = Number.parseFloat(totalRaw)
+  const estimateCandidate = Number.parseFloat(estimateRaw)
+  const totalBytes =
+    Number.isFinite(totalCandidate) && totalCandidate > 0
+      ? totalCandidate
+      : Number.isFinite(estimateCandidate) && estimateCandidate > 0
+        ? estimateCandidate
+        : null
+  onProgress(downloaded, totalBytes)
 }
 
 function wrapError(prefix: string, error: unknown): Error {
