@@ -74,6 +74,7 @@ function SelectField({
   label,
   labelClassName,
   titleClassName,
+  pickerId,
   api,
   triggerContent,
   optionContent,
@@ -82,6 +83,7 @@ function SelectField({
   label: string
   labelClassName: string
   titleClassName?: string
+  pickerId?: string
   api: ReturnType<typeof useZagSelect>
   triggerContent: (selectedLabel: string, selectedValue: string) => JSX.Element
   optionContent: (item: SelectItem) => JSX.Element
@@ -99,7 +101,12 @@ function SelectField({
     zIndex: 9999,
   }
   const content = (
-    <div className="pickerPositioner" {...positionerProps} style={positionerStyle}>
+    <div
+      className="pickerPositioner"
+      data-picker={pickerId}
+      {...positionerProps}
+      style={positionerStyle}
+    >
       <div className="pickerContent" {...api.getContentProps()}>
         <div className="pickerList" {...api.getListProps()}>
           {items.map((item) => (
@@ -316,6 +323,7 @@ function SidepanelPickers(props: SidepanelPickerProps) {
       <SelectField
         label="Scheme"
         labelClassName="scheme"
+        pickerId="scheme"
         api={schemeApi}
         items={schemeItems}
         triggerContent={(label, value) => (
@@ -334,6 +342,7 @@ function SidepanelPickers(props: SidepanelPickerProps) {
       <SelectField
         label="Mode"
         labelClassName="mode"
+        pickerId="mode"
         api={modeApi}
         items={modeItems}
         triggerContent={(label) => <span>{label || 'System'}</span>}
@@ -342,6 +351,7 @@ function SidepanelPickers(props: SidepanelPickerProps) {
       <SelectField
         label="Font"
         labelClassName="font"
+        pickerId="font"
         api={fontApi}
         items={fontItems}
         triggerContent={(label, value) => (

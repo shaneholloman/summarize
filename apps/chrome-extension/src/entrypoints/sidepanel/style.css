@@ -860,11 +860,20 @@ select {
 }
 
 .pickerPositioner[data-picker="length"] .pickerContent {
-  min-width: min(220px, 100%);
+  min-width: min(240px, 100%);
 }
 
 .pickerPositioner[data-picker="length"] {
-  width: max(220px, var(--reference-width, 0px));
+  width: max(240px, var(--reference-width, 0px));
+  max-width: var(--available-width, 100vw);
+}
+
+.pickerPositioner[data-picker="scheme"] .pickerContent {
+  min-width: min(230px, 100%);
+}
+
+.pickerPositioner[data-picker="scheme"] {
+  width: max(230px, var(--reference-width, 0px));
   max-width: var(--available-width, 100vw);
 }
 
