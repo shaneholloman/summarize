@@ -1,7 +1,9 @@
+import type { Api } from '@mariozechner/pi-ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-
 import { generateTextWithModelId, streamTextWithModelId } from '../src/llm/generate-text.js'
 import { makeAssistantMessage, makeTextDeltaStream } from './helpers/pi-ai-mock.js'
+
+type MockModel = { provider: string; id: string; api: Api }
 
 const mocks = vi.hoisted(() => ({
   completeSimple: vi.fn(),
@@ -11,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   }),
 }))
 
-mocks.completeSimple.mockImplementation(async (model: any) =>
+mocks.completeSimple.mockImplementation(async (model: MockModel) =>
   makeAssistantMessage({
     provider: model.provider,
     model: model.id,
@@ -20,7 +22,7 @@ mocks.completeSimple.mockImplementation(async (model: any) =>
     usage: { input: 1, output: 2, totalTokens: 3 },
   })
 )
-mocks.streamSimple.mockImplementation((_model: any) =>
+mocks.streamSimple.mockImplementation((_model: MockModel) =>
   makeTextDeltaStream(['o', 'k'], makeAssistantMessage({ text: 'ok' }))
 )
 
@@ -498,7 +500,7 @@ describe('llm generate/stream', () => {
       async *[Symbol.asyncIterator]() {
         await new Promise(() => {})
       },
-      result: async () => makeAssistantMessage({ text: 'ok' }) as any,
+      result: async () => makeAssistantMessage({ text: 'ok' }),
     }))
     const result = await streamTextWithModelId({
       modelId: 'openai/gpt-5.2',

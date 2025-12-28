@@ -1,8 +1,11 @@
 import { Writable } from 'node:stream'
+import type { Api } from '@mariozechner/pi-ai'
 import { describe, expect, it, vi } from 'vitest'
 
 import { runCli } from '../src/run.js'
 import { makeAssistantMessage } from './helpers/pi-ai-mock.js'
+
+type MockModel = { provider: string; id: string; api: Api }
 
 const htmlResponse = (html: string, status = 200) =>
   new Response(html, {
@@ -18,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   }),
 }))
 
-mocks.completeSimple.mockImplementation(async (model: any) =>
+mocks.completeSimple.mockImplementation(async (model: MockModel) =>
   makeAssistantMessage({ text: '   ', provider: model.provider, model: model.id, api: model.api })
 )
 

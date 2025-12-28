@@ -2,10 +2,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
+import type { Api } from '@mariozechner/pi-ai'
 import { describe, expect, it, vi } from 'vitest'
 
 import { runCli } from '../src/run.js'
 import { makeAssistantMessage } from './helpers/pi-ai-mock.js'
+
+type MockModel = { provider: string; id: string; api: Api; baseUrl?: string }
+type MockOptions = { signal?: AbortSignal; apiKey?: string }
 
 const htmlResponse = (html: string, status = 200) =>
   new Response(html, {
@@ -21,15 +25,16 @@ const mocks = vi.hoisted(() => ({
   }),
 }))
 
-mocks.completeSimple.mockImplementation(async (model: any, _context: any, options: any) =>
-  makeAssistantMessage({
-    provider: model.provider,
-    model: model.id,
-    api: model.api,
-    text: 'OK',
-    usage: { input: 1, output: 1, totalTokens: 2 },
-    ...(options?.signal?.aborted ? { stopReason: 'aborted' } : {}),
-  })
+mocks.completeSimple.mockImplementation(
+  async (model: MockModel, _context: unknown, options: MockOptions) =>
+    makeAssistantMessage({
+      provider: model.provider,
+      model: model.id,
+      api: model.api,
+      text: 'OK',
+      usage: { input: 1, output: 1, totalTokens: 2 },
+      ...(options?.signal?.aborted ? { stopReason: 'aborted' } : {}),
+    })
 )
 
 vi.mock('@mariozechner/pi-ai', () => ({

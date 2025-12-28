@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -61,7 +62,7 @@ const execFileMock: ExecFileFn = ((file, args, _options, callback) => {
   void file
   void args
   callback(null, '# converted\n\nhello\n', '')
-  return { pid: 123 } as any
+  return { pid: 123 } as unknown as ChildProcess
 }) as ExecFileFn
 
 describe('cli google streaming fallback', () => {

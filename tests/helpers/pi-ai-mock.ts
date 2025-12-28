@@ -1,3 +1,11 @@
+import type {
+  Api,
+  AssistantMessage,
+  AssistantMessageEvent,
+  Provider,
+  StopReason,
+} from '@mariozechner/pi-ai'
+
 type UsageOverrides = Partial<{
   input: number
   output: number
@@ -15,12 +23,12 @@ export function makeAssistantMessage({
   stopReason = 'stop',
 }: {
   text?: string
-  provider?: string
+  provider?: Provider
   model?: string
-  api?: string
+  api?: Api
   usage?: UsageOverrides
-  stopReason?: 'stop' | 'length' | 'toolUse' | 'error' | 'aborted'
-}) {
+  stopReason?: StopReason
+}): AssistantMessage {
   const input = usage?.input ?? 1
   const output = usage?.output ?? 1
   const cacheRead = usage?.cacheRead ?? 0
@@ -29,7 +37,7 @@ export function makeAssistantMessage({
 
   return {
     role: 'assistant' as const,
-    api: api as any,
+    api,
     provider,
     model,
     stopReason,
@@ -66,16 +74,20 @@ export function makeTextDeltaStream(
         }
       }
       if (error) {
-        yield { type: 'error' as const, reason: 'error' as const, error: error as any }
+        yield {
+          type: 'error' as const,
+          reason: 'error' as const,
+          error: error as unknown as AssistantMessage,
+        }
         return
       }
-      yield { type: 'done' as const, reason: 'stop' as const, message: finalMessage as any }
+      yield { type: 'done' as const, reason: 'stop' as const, message: finalMessage }
     },
     async result() {
       if (error) throw error
-      return finalMessage as any
+      return finalMessage
     },
-  }
+  } satisfies AsyncIterable<AssistantMessageEvent> & { result: () => Promise<AssistantMessage> }
 
   return stream
 }
