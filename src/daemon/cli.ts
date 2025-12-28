@@ -12,7 +12,19 @@ import {
   restartLaunchAgent,
   uninstallLaunchAgent,
 } from './launchd.js'
+import {
+  installScheduledTask,
+  isScheduledTaskInstalled,
+  restartScheduledTask,
+  uninstallScheduledTask,
+} from './schtasks.js'
 import { runDaemonServer } from './server.js'
+import {
+  installSystemdService,
+  isSystemdServiceEnabled,
+  restartSystemdService,
+  uninstallSystemdService,
+} from './systemd.js'
 
 type DaemonCliContext = {
   normalizedArgv: string[]
@@ -40,12 +52,82 @@ function hasArg(argv: string[], name: string): boolean {
   return argv.includes(name) || argv.some((a) => a.startsWith(`${name}=`))
 }
 
-function assertLaunchdAvailable(command: string) {
-  if (process.platform === 'darwin') return
-  const label = process.platform === 'win32' ? 'Windows' : process.platform
-  throw new Error(
-    `${command} uses launchd and is macOS-only (detected ${label}). No Linux/Windows service support yet.`
-  )
+type DaemonServiceInstallArgs = {
+  env: Record<string, string | undefined>
+  stdout: NodeJS.WritableStream
+  programArguments: string[]
+  workingDirectory?: string
+}
+
+type DaemonService = {
+  label: string
+  loadedText: string
+  notLoadedText: string
+  install: (args: DaemonServiceInstallArgs) => Promise<void>
+  uninstall: (args: {
+    env: Record<string, string | undefined>
+    stdout: NodeJS.WritableStream
+  }) => Promise<void>
+  restart: (args: { stdout: NodeJS.WritableStream }) => Promise<void>
+  isLoaded: (args: { env: Record<string, string | undefined> }) => Promise<boolean>
+}
+
+function resolveDaemonService(): DaemonService {
+  if (process.platform === 'darwin') {
+    return {
+      label: 'LaunchAgent',
+      loadedText: 'loaded',
+      notLoadedText: 'not loaded',
+      install: async (args) => {
+        await installLaunchAgent(args)
+      },
+      uninstall: async (args) => {
+        await uninstallLaunchAgent(args)
+      },
+      restart: async (args) => {
+        await restartLaunchAgent(args)
+      },
+      isLoaded: async () => isLaunchAgentLoaded(),
+    }
+  }
+
+  if (process.platform === 'linux') {
+    return {
+      label: 'systemd',
+      loadedText: 'enabled',
+      notLoadedText: 'disabled',
+      install: async (args) => {
+        await installSystemdService(args)
+      },
+      uninstall: async (args) => {
+        await uninstallSystemdService(args)
+      },
+      restart: async (args) => {
+        await restartSystemdService(args)
+      },
+      isLoaded: async () => isSystemdServiceEnabled(),
+    }
+  }
+
+  if (process.platform === 'win32') {
+    return {
+      label: 'Scheduled Task',
+      loadedText: 'registered',
+      notLoadedText: 'missing',
+      install: async (args) => {
+        await installScheduledTask(args)
+      },
+      uninstall: async (args) => {
+        await uninstallScheduledTask(args)
+      },
+      restart: async (args) => {
+        await restartScheduledTask(args)
+      },
+      isLoaded: async () => isScheduledTaskInstalled(),
+    }
+  }
+
+  throw new Error(`Daemon service install not supported on ${process.platform}`)
 }
 
 async function waitForHealth({
@@ -91,7 +173,7 @@ async function checkAuth({
   }
 }
 
-async function resolveCliEntrypointPathForLaunchd(): Promise<string> {
+async function resolveCliEntrypointPathForService(): Promise<string> {
   const argv1 = process.argv[1]
   if (!argv1) throw new Error('Unable to resolve CLI entrypoint path')
 
@@ -117,7 +199,7 @@ async function resolveCliEntrypointPathForLaunchd(): Promise<string> {
   }
 
   throw new Error(
-    `Cannot find built CLI at ${distCandidates.join(' or ')}. Run "pnpm build:cli" (or "pnpm build") first, or pass --dev to install a dev LaunchAgent.`
+    `Cannot find built CLI at ${distCandidates.join(' or ')}. Run "pnpm build:cli" (or "pnpm build") first, or pass --dev to install a dev daemon.`
   )
 }
 
@@ -137,6 +219,41 @@ async function resolveTsxCliPath(repoRoot: string): Promise<string> {
   return candidate
 }
 
+async function resolveDaemonProgramArguments({
+  dev,
+}: {
+  dev: boolean
+}): Promise<{ programArguments: string[]; workingDirectory?: string }> {
+  const nodePath = process.execPath
+  if (!dev) {
+    try {
+      const cliEntrypointPath = await resolveCliEntrypointPathForService()
+      return {
+        programArguments: [nodePath, cliEntrypointPath, 'daemon', 'run'],
+        workingDirectory: undefined,
+      }
+    } catch (error) {
+      const base = path.basename(nodePath).toLowerCase()
+      const isNodeRuntime = base === 'node' || base === 'node.exe'
+      if (!isNodeRuntime) {
+        return {
+          programArguments: [nodePath, 'daemon', 'run'],
+          workingDirectory: undefined,
+        }
+      }
+      throw error
+    }
+  }
+  const repoRoot = resolveRepoRootForDev()
+  const tsxCliPath = await resolveTsxCliPath(repoRoot)
+  const devCliPath = path.join(repoRoot, 'src', 'cli.ts')
+  await fs.access(devCliPath)
+  return {
+    programArguments: [nodePath, tsxCliPath, devCliPath, 'daemon', 'run'],
+    workingDirectory: repoRoot,
+  }
+}
+
 export async function handleDaemonRequest({
   normalizedArgv,
   envForRun,
@@ -153,7 +270,7 @@ export async function handleDaemonRequest({
   }
 
   if (sub === 'install') {
-    assertLaunchdAvailable('summarize daemon install')
+    const service = resolveDaemonService()
     const token = readArgValue(normalizedArgv, '--token')
     if (!token) throw new Error('Missing --token')
     const portRaw = readArgValue(normalizedArgv, '--port')
@@ -167,26 +284,9 @@ export async function handleDaemonRequest({
       config: { token, port, env: envSnapshot },
     })
 
-    const nodePath = process.execPath
-    const { programArguments, workingDirectory } = await (async () => {
-      if (!dev) {
-        const cliEntrypointPath = await resolveCliEntrypointPathForLaunchd()
-        return {
-          programArguments: [nodePath, cliEntrypointPath, 'daemon', 'run'],
-          workingDirectory: undefined,
-        }
-      }
-      const repoRoot = resolveRepoRootForDev()
-      const tsxCliPath = await resolveTsxCliPath(repoRoot)
-      const devCliPath = path.join(repoRoot, 'src', 'cli.ts')
-      await fs.access(devCliPath)
-      return {
-        programArguments: [nodePath, tsxCliPath, devCliPath, 'daemon', 'run'],
-        workingDirectory: repoRoot,
-      }
-    })()
+    const { programArguments, workingDirectory } = await resolveDaemonProgramArguments({ dev })
 
-    await installLaunchAgent({ env: envForRun, stdout, programArguments, workingDirectory })
+    await service.install({ env: envForRun, stdout, programArguments, workingDirectory })
     await waitForHealth({ fetchImpl, port, timeoutMs: 5000 })
     const authed = await checkAuth({ fetchImpl, token: token.trim(), port })
     if (!authed) throw new Error('Daemon is up but auth failed (token mismatch?)')
@@ -197,14 +297,14 @@ export async function handleDaemonRequest({
   }
 
   if (sub === 'status') {
-    assertLaunchdAvailable('summarize daemon status')
+    const service = resolveDaemonService()
     const cfg = await readDaemonConfig({ env: envForRun })
     if (!cfg) {
       stdout.write('Daemon not installed (missing ~/.summarize/daemon.json)\n')
       stdout.write('Run: summarize daemon install --token <token>\n')
       return true
     }
-    const loaded = await isLaunchAgentLoaded()
+    const loaded = await service.isLoaded({ env: envForRun })
     const healthy = await (async () => {
       try {
         await waitForHealth({ fetchImpl, port: cfg.port, timeoutMs: 800 })
@@ -217,27 +317,29 @@ export async function handleDaemonRequest({
       ? await checkAuth({ fetchImpl, token: cfg.token, port: cfg.port })
       : false
 
-    stdout.write(`LaunchAgent: ${loaded ? 'loaded' : 'not loaded'}\n`)
+    stdout.write(`${service.label}: ${loaded ? service.loadedText : service.notLoadedText}\n`)
     stdout.write(`Daemon: ${healthy ? `up on ${DAEMON_HOST}:${cfg.port}` : 'down'}\n`)
     stdout.write(`Auth: ${authed ? 'ok' : 'failed'}\n`)
     return true
   }
 
   if (sub === 'restart') {
-    assertLaunchdAvailable('summarize daemon restart')
+    const service = resolveDaemonService()
     const cfg = await readDaemonConfig({ env: envForRun })
     if (!cfg) {
       stdout.write('Daemon not installed (missing ~/.summarize/daemon.json)\n')
       stdout.write('Run: summarize daemon install --token <token>\n')
       return true
     }
-    const loaded = await isLaunchAgentLoaded()
+    const loaded = await service.isLoaded({ env: envForRun })
     if (!loaded) {
-      stdout.write('LaunchAgent not loaded. Run: summarize daemon install --token <token>\n')
+      stdout.write(
+        `${service.label} ${service.notLoadedText}. Run: summarize daemon install --token <token>\n`
+      )
       return true
     }
 
-    await restartLaunchAgent({ stdout })
+    await service.restart({ stdout })
     await waitForHealth({ fetchImpl, port: cfg.port, timeoutMs: 5000 })
     const authed = await checkAuth({ fetchImpl, token: cfg.token, port: cfg.port })
     if (!authed) throw new Error('Daemon restarted but auth failed (token mismatch?)')
@@ -247,9 +349,11 @@ export async function handleDaemonRequest({
   }
 
   if (sub === 'uninstall') {
-    assertLaunchdAvailable('summarize daemon uninstall')
-    await uninstallLaunchAgent({ env: envForRun, stdout })
-    stdout.write('Uninstalled (LaunchAgent unloaded). Config left in ~/.summarize/daemon.json\n')
+    const service = resolveDaemonService()
+    await service.uninstall({ env: envForRun, stdout })
+    stdout.write(
+      'Uninstalled (daemon autostart removed). Config left in ~/.summarize/daemon.json\n'
+    )
     return true
   }
 

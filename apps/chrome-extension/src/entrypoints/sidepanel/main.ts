@@ -287,6 +287,16 @@ function installStepsHtml({
   const brewCmd = 'brew install steipete/tap/summarize'
   const daemonCmd = `summarize daemon install --token ${token}`
   const isMac = platformKind === 'mac'
+  const isLinux = platformKind === 'linux'
+  const isWindows = platformKind === 'windows'
+  const isSupported = isMac || isLinux || isWindows
+  const daemonLabel = isMac
+    ? 'LaunchAgent'
+    : isLinux
+      ? 'systemd user service'
+      : isWindows
+        ? 'Scheduled Task'
+        : 'daemon'
 
   const installIntro = isMac
     ? `
@@ -298,17 +308,17 @@ function installStepsHtml({
     : `
       <p><strong>1) Install summarize</strong></p>
       <code>${npmCmd}</code>
-      <p class="setup__hint">Homebrew + LaunchAgent are macOS-only.</p>
+      <p class="setup__hint">Homebrew tap is macOS-only.</p>
     `
 
-  const daemonIntro = isMac
+  const daemonIntro = isSupported
     ? `
-      <p><strong>2) Register the daemon (LaunchAgent)</strong></p>
+      <p><strong>2) Register the daemon (${daemonLabel})</strong></p>
       <code>${daemonCmd}</code>
     `
     : `
       <p><strong>2) Daemon auto-start</strong></p>
-      <p class="setup__hint">No Linux/Windows service support yet in summarize.</p>
+      <p class="setup__hint">Not supported on this OS yet.</p>
     `
 
   const copyRow = isMac
@@ -322,7 +332,17 @@ function installStepsHtml({
         <button id="regen" type="button">Regenerate Token</button>
       </div>
     `
-    : `
+    : isSupported
+      ? `
+      <div class="row">
+        <button id="copy-npm" type="button">Copy npm</button>
+        <button id="copy-daemon" type="button">Copy daemon</button>
+      </div>
+      <div class="row">
+        <button id="regen" type="button">Regenerate Token</button>
+      </div>
+    `
+      : `
       <div class="row">
         <button id="copy-npm" type="button">Copy npm</button>
         <button id="regen" type="button">Regenerate Token</button>
@@ -330,7 +350,7 @@ function installStepsHtml({
     `
 
   const troubleshooting =
-    showTroubleshooting && isMac
+    showTroubleshooting && isSupported
       ? `
       <div class="row">
         <button id="status" type="button">Copy Status Command</button>

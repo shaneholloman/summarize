@@ -55,7 +55,7 @@ summarize "https://example.com"
 
 Want a one-click “always-on” summarizer in Chrome (real Side Panel, not injected UI)?
 
-This is a **Chrome extension** + a tiny local **daemon** (LaunchAgent) that streams Markdown summaries for the **currently visible tab** into the Side Panel.
+This is a **Chrome extension** + a tiny local **daemon** (autostart service) that streams Markdown summaries for the **currently visible tab** into the Side Panel.
 
 Docs + setup: `https://summarize.sh`
 
@@ -81,7 +81,7 @@ Notes:
 - Summarization only runs when the Side Panel is open.
 - “Auto” mode summarizes on navigation (incl. SPAs); otherwise use the button.
 - The daemon is localhost-only and requires a shared token.
-- LaunchAgent install is macOS-only (launchd).
+- Daemon autostart: macOS (launchd), Linux (systemd user), Windows (Scheduled Task).
 
 - Docs: `docs/chrome-extension.md`
 - Extension package/dev notes: `apps/chrome-extension/README.md`

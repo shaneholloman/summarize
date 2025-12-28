@@ -1,0 +1,146 @@
+import { execFile } from 'node:child_process'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { promisify } from 'node:util'
+
+import { DAEMON_WINDOWS_TASK_NAME } from './constants.js'
+
+const execFileAsync = promisify(execFile)
+
+function resolveHomeDir(env: Record<string, string | undefined>): string {
+  const home = env.USERPROFILE?.trim() || env.HOME?.trim()
+  if (!home) throw new Error('Missing HOME')
+  return home
+}
+
+function resolveTaskScriptPath(env: Record<string, string | undefined>): string {
+  const home = resolveHomeDir(env)
+  return path.join(home, '.summarize', 'daemon.cmd')
+}
+
+function quoteCmdArg(value: string): string {
+  if (!/[ \t"]/g.test(value)) return value
+  return `"${value.replace(/"/g, '\\"')}"`
+}
+
+function buildTaskScript({
+  programArguments,
+  workingDirectory,
+}: {
+  programArguments: string[]
+  workingDirectory?: string
+}): string {
+  const lines: string[] = ['@echo off']
+  if (workingDirectory) {
+    lines.push(`cd /d ${quoteCmdArg(workingDirectory)}`)
+  }
+  const command = programArguments.map(quoteCmdArg).join(' ')
+  lines.push(command)
+  return `${lines.join('\r\n')}\r\n`
+}
+
+async function execSchtasks(
+  args: string[]
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  try {
+    const { stdout, stderr } = await execFileAsync('schtasks', args, {
+      encoding: 'utf8',
+      windowsHide: true,
+    })
+    return { stdout: String(stdout ?? ''), stderr: String(stderr ?? ''), code: 0 }
+  } catch (error) {
+    const e = error as { stdout?: unknown; stderr?: unknown; code?: unknown; message?: unknown }
+    return {
+      stdout: typeof e.stdout === 'string' ? e.stdout : '',
+      stderr:
+        typeof e.stderr === 'string' ? e.stderr : typeof e.message === 'string' ? e.message : '',
+      code: typeof e.code === 'number' ? e.code : 1,
+    }
+  }
+}
+
+async function assertSchtasksAvailable() {
+  const res = await execSchtasks(['/Query'])
+  if (res.code === 0) return
+  const detail = res.stderr || res.stdout
+  throw new Error(`schtasks unavailable: ${detail || 'unknown error'}`.trim())
+}
+
+export async function installScheduledTask({
+  env,
+  stdout,
+  programArguments,
+  workingDirectory,
+}: {
+  env: Record<string, string | undefined>
+  stdout: NodeJS.WritableStream
+  programArguments: string[]
+  workingDirectory?: string
+}): Promise<{ scriptPath: string }> {
+  await assertSchtasksAvailable()
+  const scriptPath = resolveTaskScriptPath(env)
+  await fs.mkdir(path.dirname(scriptPath), { recursive: true })
+  const script = buildTaskScript({ programArguments, workingDirectory })
+  await fs.writeFile(scriptPath, script, 'utf8')
+
+  const quotedScript = quoteCmdArg(scriptPath)
+  const create = await execSchtasks([
+    '/Create',
+    '/F',
+    '/SC',
+    'ONLOGON',
+    '/RL',
+    'LIMITED',
+    '/TN',
+    DAEMON_WINDOWS_TASK_NAME,
+    '/TR',
+    quotedScript,
+  ])
+  if (create.code !== 0) {
+    throw new Error(`schtasks create failed: ${create.stderr || create.stdout}`.trim())
+  }
+
+  await execSchtasks(['/Run', '/TN', DAEMON_WINDOWS_TASK_NAME])
+  stdout.write(`Installed Scheduled Task: ${DAEMON_WINDOWS_TASK_NAME}\n`)
+  stdout.write(`Task script: ${scriptPath}\n`)
+  return { scriptPath }
+}
+
+export async function uninstallScheduledTask({
+  env,
+  stdout,
+}: {
+  env: Record<string, string | undefined>
+  stdout: NodeJS.WritableStream
+}): Promise<void> {
+  await assertSchtasksAvailable()
+  await execSchtasks(['/Delete', '/F', '/TN', DAEMON_WINDOWS_TASK_NAME])
+
+  const scriptPath = resolveTaskScriptPath(env)
+  try {
+    await fs.unlink(scriptPath)
+    stdout.write(`Removed task script: ${scriptPath}\n`)
+  } catch {
+    stdout.write(`Task script not found at ${scriptPath}\n`)
+  }
+}
+
+export async function restartScheduledTask({
+  stdout,
+}: {
+  stdout: NodeJS.WritableStream
+}): Promise<void> {
+  await assertSchtasksAvailable()
+  await execSchtasks(['/End', '/TN', DAEMON_WINDOWS_TASK_NAME])
+  const res = await execSchtasks(['/Run', '/TN', DAEMON_WINDOWS_TASK_NAME])
+  if (res.code !== 0) {
+    throw new Error(`schtasks run failed: ${res.stderr || res.stdout}`.trim())
+  }
+  stdout.write(`Restarted Scheduled Task: ${DAEMON_WINDOWS_TASK_NAME}\n`)
+}
+
+export async function isScheduledTaskInstalled(): Promise<boolean> {
+  await assertSchtasksAvailable()
+  const res = await execSchtasks(['/Query', '/TN', DAEMON_WINDOWS_TASK_NAME])
+  return res.code === 0
+}
