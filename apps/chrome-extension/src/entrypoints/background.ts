@@ -40,8 +40,8 @@ type ExtractResponse =
   | { ok: true; url: string; title: string | null; text: string; truncated: boolean }
   | { ok: false; error: string }
 
-const optionsWindowSize = { width: 900, height: 980 }
-const optionsWindowMin = { width: 760, height: 820 }
+const optionsWindowSize = { width: 940, height: 1120 }
+const optionsWindowMin = { width: 820, height: 900 }
 const optionsWindowMargin = 20
 
 function resolveOptionsUrl(): string {
