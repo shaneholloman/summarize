@@ -279,19 +279,26 @@ const isHttpUrl = (value: string) => /^https?:\/\//i.test(value)
 const isLikelyDomain = (value: string) =>
   /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value) && !value.includes('..')
 
-function metricsWrapsToMultipleLines(): boolean {
-  const styles = getComputedStyle(metricsEl)
-  const lineHeightRaw = styles.lineHeight
-  const fontSize = Number.parseFloat(styles.fontSize) || 0
-  const lineHeight =
-    lineHeightRaw === 'normal' ? fontSize * 1.2 : Number.parseFloat(lineHeightRaw) || 0
+function getLineHeightPx(el: HTMLElement, styles?: CSSStyleDeclaration): number {
+  const resolved = styles ?? getComputedStyle(el)
+  const lineHeightRaw = resolved.lineHeight
+  const fontSize = Number.parseFloat(resolved.fontSize) || 0
+  if (lineHeightRaw === 'normal') return fontSize * 1.2
+  const parsed = Number.parseFloat(lineHeightRaw)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function elementWrapsToMultipleLines(el: HTMLElement): boolean {
+  if (el.getClientRects().length === 0) return false
+  const styles = getComputedStyle(el)
+  const lineHeight = getLineHeightPx(el, styles)
   if (!lineHeight) return false
 
   const paddingTop = Number.parseFloat(styles.paddingTop) || 0
   const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0
   const borderTop = Number.parseFloat(styles.borderTopWidth) || 0
   const borderBottom = Number.parseFloat(styles.borderBottomWidth) || 0
-  const totalHeight = metricsEl.getBoundingClientRect().height
+  const totalHeight = el.getBoundingClientRect().height
   const contentHeight = Math.max(
     0,
     totalHeight - paddingTop - paddingBottom - borderTop - borderBottom
@@ -300,8 +307,91 @@ function metricsWrapsToMultipleLines(): boolean {
   return contentHeight > lineHeight * 1.4
 }
 
-function renderMetricsSummary(summary: string, options?: { shortenOpenRouter?: boolean }) {
-  metricsEl.replaceChildren()
+type MetricsRenderState = {
+  summary: string | null
+  shortened: boolean
+  rafId: number | null
+  observer: ResizeObserver | null
+}
+
+const metricsRenderState: MetricsRenderState = {
+  summary: null,
+  shortened: false,
+  rafId: null,
+  observer: null,
+}
+
+let metricsMeasureEl: HTMLDivElement | null = null
+
+function ensureMetricsMeasureEl(): HTMLDivElement {
+  if (metricsMeasureEl) return metricsMeasureEl
+  const el = document.createElement('div')
+  el.style.position = 'absolute'
+  el.style.visibility = 'hidden'
+  el.style.pointerEvents = 'none'
+  el.style.left = '-99999px'
+  el.style.top = '0'
+  el.style.padding = '0'
+  el.style.border = '0'
+  el.style.margin = '0'
+  el.style.whiteSpace = 'normal'
+  el.style.boxSizing = 'content-box'
+  document.body.append(el)
+  metricsMeasureEl = el
+  return el
+}
+
+function syncMetricsMeasureStyles() {
+  if (!metricsMeasureEl) return
+  const styles = getComputedStyle(metricsEl)
+  metricsMeasureEl.style.fontFamily = styles.fontFamily
+  metricsMeasureEl.style.fontSize = styles.fontSize
+  metricsMeasureEl.style.fontWeight = styles.fontWeight
+  metricsMeasureEl.style.fontStyle = styles.fontStyle
+  metricsMeasureEl.style.fontVariant = styles.fontVariant
+  metricsMeasureEl.style.lineHeight = styles.lineHeight
+  metricsMeasureEl.style.letterSpacing = styles.letterSpacing
+  metricsMeasureEl.style.wordSpacing = styles.wordSpacing
+  metricsMeasureEl.style.textTransform = styles.textTransform
+  metricsMeasureEl.style.textIndent = styles.textIndent
+  metricsMeasureEl.style.wordBreak = styles.wordBreak
+  metricsMeasureEl.style.whiteSpace = styles.whiteSpace
+  metricsMeasureEl.style.width = `${metricsEl.clientWidth}px`
+}
+
+function ensureMetricsObserver() {
+  if (metricsRenderState.observer) return
+  metricsRenderState.observer = new ResizeObserver(() => {
+    scheduleMetricsFitCheck()
+  })
+  metricsRenderState.observer.observe(metricsEl)
+}
+
+function scheduleMetricsFitCheck() {
+  if (!metricsRenderState.summary) return
+  if (metricsRenderState.rafId != null) return
+  metricsRenderState.rafId = window.requestAnimationFrame(() => {
+    metricsRenderState.rafId = null
+    if (!metricsRenderState.summary) return
+    const parts = getMetricsParts(metricsRenderState.summary)
+    if (parts.length === 0) return
+    const fullText = parts.join(' · ')
+    if (!/\bopenrouter\//i.test(fullText)) return
+    if (metricsEl.clientWidth <= 0) return
+    const measureEl = ensureMetricsMeasureEl()
+    syncMetricsMeasureStyles()
+    measureEl.textContent = fullText
+    const shouldShorten = elementWrapsToMultipleLines(measureEl)
+    if (shouldShorten === metricsRenderState.shortened) return
+    metricsRenderState.shortened = shouldShorten
+    renderMetricsSummary(metricsRenderState.summary, { shortenOpenRouter: shouldShorten })
+  })
+}
+
+function getMetricsParts(
+  summary: string,
+  options?: { shortenOpenRouter?: boolean }
+): string[] {
   const shortenOpenRouter = options?.shortenOpenRouter ?? false
 
   const inputSummary = lastMeta.inputSummary?.trim() ?? ''
@@ -334,7 +424,7 @@ function renderMetricsSummary(summary: string, options?: { shortenOpenRouter?: b
     return false
   }
 
-  const parts = summary
+  return summary
     .split(' · ')
     .filter((part) => !shouldOmitPart(part))
     .map((part) => {
@@ -343,6 +433,12 @@ function renderMetricsSummary(summary: string, options?: { shortenOpenRouter?: b
       if (!/^openrouter\//i.test(trimmed)) return part
       return trimmed.replace(/^openrouter\//i, 'or/')
     })
+}
+
+function renderMetricsSummary(summary: string, options?: { shortenOpenRouter?: boolean }) {
+  metricsEl.replaceChildren()
+
+  const parts = getMetricsParts(summary, options)
 
   parts.forEach((part, index) => {
     if (index) metricsEl.append(document.createTextNode(' · '))
@@ -1014,13 +1110,14 @@ async function startStream(run: RunStart) {
           detailsDetailed: string | null
           elapsedMs: number
         }
+        metricsRenderState.summary = data.summary
+        metricsRenderState.shortened = false
         renderMetricsSummary(data.summary)
-        if (/\bopenrouter\//i.test(data.summary) && metricsWrapsToMultipleLines()) {
-          renderMetricsSummary(data.summary, { shortenOpenRouter: true })
-        }
         metricsEl.removeAttribute('title')
         metricsEl.removeAttribute('data-details')
         metricsEl.classList.remove('hidden')
+        ensureMetricsObserver()
+        scheduleMetricsFitCheck()
       } else if (msg.event === 'error') {
         const data = JSON.parse(msg.data) as { message: string }
         throw new Error(data.message)
