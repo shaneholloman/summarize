@@ -102,6 +102,7 @@ The daemon decides the best pipeline:
   - Typography: font family (dropdown + custom), font size (slider).
 - Advanced overrides (collapsed by default; click the section title to expand).
   - Leave blank to use daemon config/defaults; set a value to override.
+  - Chat mode (advanced): enable/disable Chat in the side panel (default on).
   - Extended logging: send full input/output to daemon logs (requires daemon logging enabled).
   - Hover summary prompt: customize the prompt used for link hover summaries (prefilled; reset to default).
   - Pipeline mode: `page|url` (default auto).
@@ -143,9 +144,19 @@ Problem: daemon must be secured; extension must discover and pair with it.
     - `prompt?: string` (custom instruction prefix)
     - `mode?: "auto" | "page" | "url"` (default: `"auto"`)
     - `maxCharacters?: number | null` (caps URL-mode extraction before summarization)
+    - `extractOnly?: boolean` (when `true`, returns extracted content without summarizing; requires `mode: "url"`)
     - `text?: string` (required for `mode: "page"`; optional for `auto`)
     - `truncated?: boolean` (optional; indicates extracted `text` was shortened)
   - 200 JSON: `{ ok: true, id }`
+- `POST /v1/chat`
+  - Headers: `Authorization: Bearer <token>`
+  - Body:
+    - `url: string` (required)
+    - `title?: string | null`
+    - `pageContent: string` (extracted page content / transcript)
+    - `messages: Array<{ role: "user" | "assistant"; content: string }>`
+    - `model?: string` (same as `/v1/summarize`, optional)
+  - 200 JSON: `{ ok: true, id }` (stream via `/v1/summarize/:id/events`)
 - `GET /v1/summarize/:id/events` (SSE)
   - `event: chunk` `data: { text }`
   - `event: meta` `data: { model }`

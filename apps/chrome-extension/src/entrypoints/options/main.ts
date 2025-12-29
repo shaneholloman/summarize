@@ -28,6 +28,8 @@ const advancedFieldsEl = byId<HTMLDivElement>('advancedFields')
 const advancedToggleEl = byId<HTMLButtonElement>('advancedToggle')
 const hoverPromptEl = byId<HTMLTextAreaElement>('hoverPrompt')
 const hoverPromptResetBtn = byId<HTMLButtonElement>('hoverPromptReset')
+const chatToggleRoot = byId<HTMLDivElement>('chatToggle')
+const hoverSummariesToggleRoot = byId<HTMLDivElement>('hoverSummariesToggle')
 const extendedLoggingToggleRoot = byId<HTMLDivElement>('extendedLoggingToggle')
 const requestModeEl = byId<HTMLSelectElement>('requestMode')
 const firecrawlModeEl = byId<HTMLSelectElement>('firecrawlMode')
@@ -44,6 +46,8 @@ const buildInfoEl = document.getElementById('buildInfo')
 const daemonStatusEl = byId<HTMLDivElement>('daemonStatus')
 
 let autoValue = defaultSettings.autoSummarize
+let chatEnabledValue = defaultSettings.chatEnabled
+let hoverSummariesValue = defaultSettings.hoverSummaries
 let extendedLoggingValue = defaultSettings.extendedLogging
 let advancedOpen = false
 
@@ -318,6 +322,24 @@ const autoToggle = mountCheckbox(autoToggleRoot, {
   },
 })
 
+const chatToggle = mountCheckbox(chatToggleRoot, {
+  id: 'options-chat',
+  label: 'Enable Chat mode in the side panel',
+  checked: chatEnabledValue,
+  onCheckedChange: (checked) => {
+    chatEnabledValue = checked
+  },
+})
+
+const hoverSummariesToggle = mountCheckbox(hoverSummariesToggleRoot, {
+  id: 'options-hover-summaries',
+  label: 'Show hover summary tooltips in pages',
+  checked: hoverSummariesValue,
+  onCheckedChange: (checked) => {
+    hoverSummariesValue = checked
+  },
+})
+
 const extendedLoggingToggle = mountCheckbox(extendedLoggingToggleRoot, {
   id: 'options-extended-logging',
   label: 'Extended logging (send full input/output to daemon logs)',
@@ -347,6 +369,8 @@ async function load() {
   promptOverrideEl.value = s.promptOverride
   hoverPromptEl.value = s.hoverPrompt || defaultSettings.hoverPrompt
   autoValue = s.autoSummarize
+  chatEnabledValue = s.chatEnabled
+  hoverSummariesValue = s.hoverSummaries
   extendedLoggingValue = s.extendedLogging
   autoToggle.update({
     id: 'options-auto',
@@ -354,6 +378,22 @@ async function load() {
     checked: autoValue,
     onCheckedChange: (checked) => {
       autoValue = checked
+    },
+  })
+  chatToggle.update({
+    id: 'options-chat',
+    label: 'Enable Chat mode in the side panel',
+    checked: chatEnabledValue,
+    onCheckedChange: (checked) => {
+      chatEnabledValue = checked
+    },
+  })
+  hoverSummariesToggle.update({
+    id: 'options-hover-summaries',
+    label: 'Show hover summary tooltips in pages',
+    checked: hoverSummariesValue,
+    onCheckedChange: (checked) => {
+      hoverSummariesValue = checked
     },
   })
   extendedLoggingToggle.update({
@@ -440,7 +480,8 @@ formEl.addEventListener('submit', (e) => {
       promptOverride: promptOverrideEl.value || defaultSettings.promptOverride,
       hoverPrompt: hoverPromptEl.value || defaultSettings.hoverPrompt,
       autoSummarize: autoValue,
-      hoverSummaries: current.hoverSummaries,
+      hoverSummaries: hoverSummariesValue,
+      chatEnabled: chatEnabledValue,
       extendedLogging: extendedLoggingValue,
       maxChars: Number(maxCharsEl.value) || defaultSettings.maxChars,
       requestMode: requestModeEl.value || defaultSettings.requestMode,

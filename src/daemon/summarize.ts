@@ -379,3 +379,49 @@ export async function streamSummaryForUrl({
     }),
   }
 }
+
+export async function extractContentForUrl({
+  env,
+  fetchImpl,
+  input,
+  cache,
+  overrides,
+}: {
+  env: Record<string, string | undefined>
+  fetchImpl: typeof fetch
+  input: UrlModeInput
+  cache: CacheState
+  overrides: RunOverrides
+}): Promise<ExtractedLinkContent> {
+  const extractedRef = { value: null as ExtractedLinkContent | null }
+
+  const ctx = createDaemonUrlFlowContext({
+    env,
+    fetchImpl,
+    cache,
+    modelOverride: null,
+    promptOverride: null,
+    lengthRaw: '',
+    languageRaw: '',
+    maxExtractCharacters:
+      input.maxCharacters && input.maxCharacters > 0 ? input.maxCharacters : null,
+    overrides,
+    extractOnly: true,
+    hooks: {
+      onExtracted: (content) => {
+        extractedRef.value = content
+      },
+    },
+    runStartedAtMs: Date.now(),
+    stdoutSink: { writeChunk: () => {} },
+  })
+
+  await runUrlFlow({ ctx, url: input.url, isYoutubeUrl: isYouTubeUrl(input.url) })
+
+  const extracted = extractedRef.value
+  if (!extracted) {
+    throw new Error('Internal error: missing extracted content')
+  }
+
+  return extracted
+}

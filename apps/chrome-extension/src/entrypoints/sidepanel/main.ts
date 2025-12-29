@@ -9,11 +9,13 @@ import { mountCheckbox } from '../../ui/zag-checkbox'
 import { createHeaderController } from './header-controller'
 import { mountSidepanelLengthPicker, mountSidepanelPickers } from './pickers'
 import { createStreamController } from './stream-controller'
-import type { PanelPhase, PanelState, RunStart, UiState } from './types'
+import type { ChatMessage, PanelPhase, PanelState, RunStart, UiState } from './types'
 
 type PanelToBg =
   | { type: 'panel:ready' }
   | { type: 'panel:summarize'; refresh?: boolean }
+  | { type: 'panel:startChat' }
+  | { type: 'panel:chat'; messages: Array<{ role: 'user' | 'assistant'; content: string }> }
   | { type: 'panel:ping' }
   | { type: 'panel:closed' }
   | { type: 'panel:rememberUrl'; url: string }
@@ -21,11 +23,24 @@ type PanelToBg =
   | { type: 'panel:setLength'; value: string }
   | { type: 'panel:openOptions' }
 
+type ChatReadyPayload = {
+  url: string
+  title: string | null
+  transcript: string
+}
+
+type ChatStartPayload = {
+  id: string
+  url: string
+}
+
 type BgToPanel =
   | { type: 'ui:state'; state: UiState }
   | { type: 'ui:status'; status: string }
   | { type: 'run:start'; run: RunStart }
   | { type: 'run:error'; message: string }
+  | { type: 'chat:ready'; payload: ChatReadyPayload }
+  | { type: 'chat:start'; payload: ChatStartPayload }
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id)
@@ -42,8 +57,11 @@ const drawerEl = byId<HTMLElement>('drawer')
 const setupEl = byId<HTMLDivElement>('setup')
 const renderEl = byId<HTMLElement>('render')
 const metricsEl = byId<HTMLDivElement>('metrics')
+const metricsHomeEl = byId<HTMLDivElement>('metricsHome')
+const chatMetricsSlotEl = byId<HTMLDivElement>('chatMetricsSlot')
 
 const summarizeBtn = byId<HTMLButtonElement>('summarize')
+const chatBtn = byId<HTMLButtonElement>('chat')
 const drawerToggleBtn = byId<HTMLButtonElement>('drawerToggle')
 const refreshBtn = byId<HTMLButtonElement>('refresh')
 const advancedBtn = byId<HTMLButtonElement>('advanced')
@@ -52,6 +70,13 @@ const hoverToggleRoot = byId<HTMLDivElement>('hoverToggle')
 const lengthRoot = byId<HTMLDivElement>('lengthRoot')
 const pickersRoot = byId<HTMLDivElement>('pickersRoot')
 const sizeEl = byId<HTMLInputElement>('size')
+
+const chatContainerEl = byId<HTMLElement>('chatContainer')
+const chatMessagesEl = byId<HTMLDivElement>('chatMessages')
+const chatInputEl = byId<HTMLTextAreaElement>('chatInput')
+const chatSendBtn = byId<HTMLButtonElement>('chatSend')
+const chatBackBtn = byId<HTMLButtonElement>('chatBack')
+const chatContextStatusEl = byId<HTMLDivElement>('chatContextStatus')
 
 const md = new MarkdownIt({
   html: false,
@@ -66,10 +91,22 @@ const panelState: PanelState = {
   summaryFromCache: null,
   phase: 'idle',
   error: null,
+  inChatMode: false,
+  chatMessages: [],
+  chatStreaming: false,
+  chatTranscript: null,
 }
 let drawerAnimation: Animation | null = null
 let autoValue = false
 let hoverSummariesValue = defaultSettings.hoverSummaries
+let chatEnabledValue = defaultSettings.chatEnabled
+
+const MAX_CHAT_MESSAGES = 1000
+const MAX_CHAT_CHARACTERS = 160_000
+const chatHistoryCache = new Map<number, ChatMessage[]>()
+let chatHistoryLoadId = 0
+let activeTabId: number | null = null
+let activeTabUrl: string | null = null
 
 const isStreaming = () => panelState.phase === 'connecting' || panelState.phase === 'streaming'
 
@@ -151,13 +188,12 @@ async function syncWithActiveTab() {
 
 function resetSummaryView() {
   renderEl.innerHTML = ''
-  metricsEl.textContent = ''
-  metricsEl.classList.add('hidden')
-  metricsEl.removeAttribute('data-details')
-  metricsEl.removeAttribute('title')
-  metricsRenderState.summary = null
-  metricsRenderState.shortened = false
+  clearMetricsForMode('summary')
   panelState.summaryFromCache = null
+  if (panelState.inChatMode) {
+    exitChatMode()
+  }
+  resetChatState()
 }
 
 window.addEventListener('error', (event) => {
@@ -216,8 +252,18 @@ function elementWrapsToMultipleLines(el: HTMLElement): boolean {
   return contentHeight > lineHeight * 1.4
 }
 
+type MetricsMode = 'summary' | 'chat'
+
+type MetricsState = {
+  summary: string | null
+  inputSummary: string | null
+  sourceUrl: string | null
+}
+
 type MetricsRenderState = {
   summary: string | null
+  inputSummary: string | null
+  sourceUrl: string | null
   shortened: boolean
   rafId: number | null
   observer: ResizeObserver | null
@@ -225,10 +271,19 @@ type MetricsRenderState = {
 
 const metricsRenderState: MetricsRenderState = {
   summary: null,
+  inputSummary: null,
+  sourceUrl: null,
   shortened: false,
   rafId: null,
   observer: null,
 }
+
+const metricsByMode: Record<MetricsMode, MetricsState> = {
+  summary: { summary: null, inputSummary: null, sourceUrl: null },
+  chat: { summary: null, inputSummary: null, sourceUrl: null },
+}
+
+let activeMetricsMode: MetricsMode = 'summary'
 
 let metricsMeasureEl: HTMLDivElement | null = null
 
@@ -284,7 +339,7 @@ function scheduleMetricsFitCheck() {
     if (!metricsRenderState.summary) return
     const parts = buildMetricsParts({
       summary: metricsRenderState.summary,
-      inputSummary: panelState.lastMeta.inputSummary,
+      inputSummary: metricsRenderState.inputSummary,
     })
     if (parts.length === 0) return
     const fullText = parts.join(' · ')
@@ -296,16 +351,23 @@ function scheduleMetricsFitCheck() {
     const shouldShorten = elementWrapsToMultipleLines(measureEl)
     if (shouldShorten === metricsRenderState.shortened) return
     metricsRenderState.shortened = shouldShorten
-    renderMetricsSummary(metricsRenderState.summary, { shortenOpenRouter: shouldShorten })
+    renderMetricsSummary(metricsRenderState.summary, {
+      shortenOpenRouter: shouldShorten,
+      inputSummary: metricsRenderState.inputSummary,
+      sourceUrl: metricsRenderState.sourceUrl,
+    })
   })
 }
 
-function renderMetricsSummary(summary: string, options?: { shortenOpenRouter?: boolean }) {
+function renderMetricsSummary(
+  summary: string,
+  options?: { shortenOpenRouter?: boolean; inputSummary?: string | null; sourceUrl?: string | null }
+) {
   metricsEl.replaceChildren()
   const tokens = buildMetricsTokens({
     summary,
-    inputSummary: panelState.lastMeta.inputSummary,
-    sourceUrl: panelState.currentSource?.url ?? null,
+    inputSummary: options?.inputSummary ?? panelState.lastMeta.inputSummary,
+    sourceUrl: options?.sourceUrl ?? panelState.currentSource?.url ?? null,
     shortenOpenRouter: options?.shortenOpenRouter ?? false,
   })
 
@@ -333,6 +395,66 @@ function renderMetricsSummary(summary: string, options?: { shortenOpenRouter?: b
     }
     metricsEl.append(document.createTextNode(token.text))
   })
+}
+
+function moveMetricsTo(mode: MetricsMode) {
+  const target = mode === 'chat' ? chatMetricsSlotEl : metricsHomeEl
+  if (metricsEl.parentElement !== target) {
+    target.append(metricsEl)
+  }
+  activeMetricsMode = mode
+}
+
+function renderMetricsMode(mode: MetricsMode) {
+  const state = metricsByMode[mode]
+  metricsRenderState.summary = state.summary
+  metricsRenderState.inputSummary = state.inputSummary
+  metricsRenderState.sourceUrl = state.sourceUrl
+  metricsRenderState.shortened = false
+
+  if (mode === 'chat') {
+    chatMetricsSlotEl.classList.toggle('isVisible', Boolean(state.summary))
+  } else {
+    chatMetricsSlotEl.classList.remove('isVisible')
+  }
+
+  metricsEl.removeAttribute('title')
+  metricsEl.removeAttribute('data-details')
+
+  if (!state.summary) {
+    metricsEl.textContent = ''
+    metricsEl.classList.add('hidden')
+    return
+  }
+
+  renderMetricsSummary(state.summary, {
+    inputSummary: state.inputSummary,
+    sourceUrl: state.sourceUrl,
+  })
+  metricsEl.classList.remove('hidden')
+  ensureMetricsObserver()
+  scheduleMetricsFitCheck()
+}
+
+function setMetricsForMode(
+  mode: MetricsMode,
+  summary: string | null,
+  inputSummary: string | null,
+  sourceUrl: string | null
+) {
+  metricsByMode[mode] = { summary, inputSummary, sourceUrl }
+  if (activeMetricsMode === mode) {
+    renderMetricsMode(mode)
+  }
+}
+
+function clearMetricsForMode(mode: MetricsMode) {
+  setMetricsForMode(mode, null, null, null)
+}
+
+function setActiveMetricsMode(mode: MetricsMode) {
+  moveMetricsTo(mode)
+  renderMetricsMode(mode)
 }
 
 function applyTypography(fontFamily: string, fontSize: number) {
@@ -423,6 +545,130 @@ function syncHoverToggle() {
   })
 }
 
+function applyChatEnabled() {
+  chatBtn.toggleAttribute('hidden', !chatEnabledValue)
+  if (!chatEnabledValue) {
+    chatContainerEl.classList.add('hidden')
+    if (panelState.inChatMode) {
+      exitChatMode()
+    }
+    clearMetricsForMode('chat')
+    resetChatState()
+  }
+}
+
+function getChatHistoryKey(tabId: number) {
+  return `chat:tab:${tabId}`
+}
+
+function compactChatHistory(messages: ChatMessage[]): ChatMessage[] {
+  const filtered = messages.filter((msg) => msg.content.trim().length > 0)
+  const trimmed: ChatMessage[] = []
+  let totalChars = 0
+  for (let i = filtered.length - 1; i >= 0; i -= 1) {
+    const msg = filtered[i]
+    const len = msg.content.length
+    if (trimmed.length >= MAX_CHAT_MESSAGES) break
+    if (trimmed.length > 0 && totalChars + len > MAX_CHAT_CHARACTERS) break
+    trimmed.push(msg)
+    totalChars += len
+  }
+  return trimmed.reverse()
+}
+
+function computeChatContextUsage(messages: ChatMessage[]) {
+  const totalChars = messages.reduce((sum, msg) => sum + msg.content.length, 0)
+  const percent = Math.min(100, Math.round((totalChars / MAX_CHAT_CHARACTERS) * 100))
+  return { totalChars, percent, totalMessages: messages.length }
+}
+
+function updateChatContextStatus() {
+  const usage = computeChatContextUsage(panelState.chatMessages)
+  if (!panelState.inChatMode || !chatEnabledValue) {
+    chatContextStatusEl.textContent = ''
+    chatContextStatusEl.removeAttribute('data-state')
+    return
+  }
+  chatContextStatusEl.textContent = `Context ${usage.percent}% · ${usage.totalMessages} msgs · ${usage.totalChars.toLocaleString()} chars`
+  if (usage.percent >= 85) {
+    chatContextStatusEl.dataset.state = 'warn'
+  } else {
+    chatContextStatusEl.removeAttribute('data-state')
+  }
+}
+
+async function clearChatHistoryForTab(tabId: number | null) {
+  if (!tabId) return
+  chatHistoryCache.delete(tabId)
+  const store = chrome.storage?.session
+  if (!store) return
+  try {
+    await store.remove(getChatHistoryKey(tabId))
+  } catch {
+    // ignore
+  }
+}
+
+async function clearChatHistoryForActiveTab() {
+  await clearChatHistoryForTab(activeTabId)
+}
+
+async function loadChatHistory(tabId: number): Promise<ChatMessage[] | null> {
+  const cached = chatHistoryCache.get(tabId)
+  if (cached) return cached
+  const store = chrome.storage?.session
+  if (!store) return null
+  try {
+    const key = getChatHistoryKey(tabId)
+    const res = await store.get(key)
+    const raw = res?.[key]
+    if (!Array.isArray(raw)) return null
+    const parsed = raw.filter((msg) => msg && typeof msg === 'object') as ChatMessage[]
+    if (!parsed.length) return null
+    chatHistoryCache.set(tabId, parsed)
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+async function persistChatHistory() {
+  if (!chatEnabledValue) return
+  const tabId = activeTabId
+  if (!tabId) return
+  const compacted = compactChatHistory(panelState.chatMessages)
+  if (compacted.length !== panelState.chatMessages.length) {
+    panelState.chatMessages = compacted
+    chatMessagesEl.innerHTML = ''
+    for (const message of compacted) {
+      renderChatMessage(message)
+    }
+  }
+  chatHistoryCache.set(tabId, compacted)
+  updateChatContextStatus()
+  const store = chrome.storage?.session
+  if (!store) return
+  try {
+    await store.set({ [getChatHistoryKey(tabId)]: compacted })
+  } catch {
+    // ignore
+  }
+}
+
+async function restoreChatHistory() {
+  const tabId = activeTabId
+  if (!tabId) return
+  const loadId = (chatHistoryLoadId += 1)
+  const history = await loadChatHistory(tabId)
+  if (loadId !== chatHistoryLoadId || !history?.length) return
+  panelState.chatMessages = history
+  chatMessagesEl.innerHTML = ''
+  for (const message of history) {
+    renderChatMessage(message)
+  }
+  updateChatContextStatus()
+}
+
 type PlatformKind = 'mac' | 'windows' | 'linux' | 'other'
 
 function resolvePlatformKind(): PlatformKind {
@@ -451,12 +697,7 @@ const streamController = createStreamController({
   getToken: async () => (await loadSettings()).token,
   onReset: () => {
     renderEl.innerHTML = ''
-    metricsEl.textContent = ''
-    metricsEl.classList.add('hidden')
-    metricsEl.removeAttribute('data-details')
-    metricsEl.removeAttribute('title')
-    metricsRenderState.summary = null
-    metricsRenderState.shortened = false
+    clearMetricsForMode('summary')
     panelState.summaryFromCache = null
     panelState.lastMeta = { inputSummary: null, model: null, modelLabel: null }
   },
@@ -494,18 +735,44 @@ const streamController = createStreamController({
     }
   },
   onMetrics: (summary) => {
-    metricsRenderState.summary = summary
-    metricsRenderState.shortened = false
-    renderMetricsSummary(summary)
-    metricsEl.removeAttribute('title')
-    metricsEl.removeAttribute('data-details')
-    metricsEl.classList.remove('hidden')
-    ensureMetricsObserver()
-    scheduleMetricsFitCheck()
+    setMetricsForMode(
+      'summary',
+      summary,
+      panelState.lastMeta.inputSummary,
+      panelState.currentSource?.url ?? null
+    )
   },
   onRender: renderMarkdown,
   onSyncWithActiveTab: syncWithActiveTab,
   onError: (err) => friendlyFetchError(err, 'Stream failed'),
+})
+
+const chatStreamController = createStreamController({
+  mode: 'chat',
+  getToken: async () => (await loadSettings()).token,
+  onReset: () => {
+    clearMetricsForMode('chat')
+  },
+  onStatus: (text) => headerController.setStatus(text),
+  onPhaseChange: (phase) => {
+    if (phase === 'error') {
+      finishStreamingMessage()
+    }
+  },
+  onMeta: () => {},
+  onMetrics: (summary) => {
+    setMetricsForMode('chat', summary, null, panelState.currentSource?.url ?? null)
+  },
+  onChunk: (content) => {
+    updateStreamingMessage(content)
+  },
+  onDone: () => {
+    finishStreamingMessage()
+  },
+  onError: (err) => {
+    const message = err instanceof Error ? err.message : String(err)
+    return message
+  },
 })
 
 async function ensureToken(): Promise<string> {
@@ -714,6 +981,25 @@ function maybeShowSetup(state: UiState): boolean {
 }
 
 function updateControls(state: UiState) {
+  const nextTabId = state.tab.id ?? null
+  const nextTabUrl = state.tab.url ?? null
+  const tabChanged = nextTabId !== activeTabId
+  const urlChanged =
+    !tabChanged && nextTabUrl && activeTabUrl && !urlsMatch(nextTabUrl, activeTabUrl)
+
+  if (tabChanged || urlChanged) {
+    const previousTabId = activeTabId
+    activeTabId = nextTabId
+    activeTabUrl = nextTabUrl
+    if (panelState.inChatMode) {
+      exitChatMode()
+    }
+    resetChatState()
+    if (!tabChanged && urlChanged) {
+      void clearChatHistoryForTab(previousTabId)
+    }
+  }
+
   autoValue = state.settings.autoSummarize
   autoToggle.update({
     id: 'sidepanel-auto',
@@ -726,6 +1012,8 @@ function updateControls(state: UiState) {
   })
   hoverSummariesValue = state.settings.hoverSummaries
   syncHoverToggle()
+  chatEnabledValue = state.settings.chatEnabled
+  applyChatEnabled()
   if (pickerSettings.length !== state.settings.length) {
     pickerSettings = { ...pickerSettings, length: state.settings.length }
     lengthPicker.update({
@@ -773,11 +1061,33 @@ function handleBgMessage(msg: BgToPanel) {
     case 'run:error':
       headerController.setStatus(`Error: ${msg.message}`)
       setPhase('error', { error: msg.message })
+      if (panelState.chatStreaming) {
+        finishStreamingMessage()
+      }
       return
     case 'run:start':
+      if (panelState.inChatMode) {
+        exitChatMode()
+      }
+      void clearChatHistoryForActiveTab()
       panelState.currentSource = { url: msg.run.url, title: msg.run.title }
       panelState.lastMeta = { inputSummary: null, model: null, modelLabel: null }
       void streamController.start(msg.run)
+      return
+    case 'chat:ready':
+      if (!chatEnabledValue) return
+      panelState.currentSource = { url: msg.payload.url, title: msg.payload.title }
+      panelState.chatTranscript = msg.payload.transcript
+      enterChatMode()
+      return
+    case 'chat:start':
+      if (!chatEnabledValue) return
+      void chatStreamController.start({
+        id: msg.payload.id,
+        url: msg.payload.url,
+        title: panelState.currentSource?.title || null,
+        reason: 'chat',
+      })
       return
   }
 }
@@ -865,10 +1175,177 @@ function toggleDrawer(force?: boolean, opts?: { animate?: boolean }) {
   }
 }
 
+function enterChatMode() {
+  if (!chatEnabledValue) return
+  panelState.inChatMode = true
+  panelState.chatMessages = []
+  panelState.chatStreaming = false
+  chatMessagesEl.innerHTML = ''
+  chatInputEl.value = ''
+  chatSendBtn.disabled = false
+
+  renderEl.classList.add('hidden')
+  setupEl.classList.add('hidden')
+  chatContainerEl.classList.remove('hidden')
+  clearMetricsForMode('chat')
+  setActiveMetricsMode('chat')
+
+  headerController.setBaseTitle('Chat')
+  headerController.setBaseSubtitle(panelState.currentSource?.title || '')
+  headerController.setStatus('')
+  updateChatContextStatus()
+  void restoreChatHistory()
+}
+
+function exitChatMode() {
+  if (panelState.chatStreaming) {
+    chatStreamController.abort()
+  }
+  void persistChatHistory()
+  panelState.inChatMode = false
+  panelState.chatMessages = []
+  panelState.chatStreaming = false
+  panelState.chatTranscript = null
+
+  chatContainerEl.classList.add('hidden')
+  renderEl.classList.remove('hidden')
+  setActiveMetricsMode('summary')
+
+  headerController.setBaseTitle(panelState.currentSource?.title || 'Summarize')
+  headerController.setBaseSubtitle(
+    buildIdleSubtitle({
+      inputSummary: panelState.lastMeta.inputSummary,
+      modelLabel: panelState.lastMeta.modelLabel,
+      model: panelState.lastMeta.model,
+    })
+  )
+  headerController.setStatus('')
+}
+
+function resetChatState() {
+  panelState.chatMessages = []
+  panelState.chatStreaming = false
+  panelState.chatTranscript = null
+  chatMessagesEl.innerHTML = ''
+  chatInputEl.value = ''
+  chatSendBtn.disabled = false
+  updateChatContextStatus()
+}
+
+function addChatMessage(message: ChatMessage) {
+  panelState.chatMessages.push(message)
+  renderChatMessage(message)
+  updateChatContextStatus()
+  void persistChatHistory()
+}
+
+function renderChatMessage(message: ChatMessage) {
+  const msgEl = document.createElement('div')
+  msgEl.className = `chatMessage ${message.role}`
+  msgEl.dataset.id = message.id
+
+  if (message.role === 'assistant') {
+    msgEl.innerHTML = md.render(message.content || '...')
+    for (const a of Array.from(msgEl.querySelectorAll('a'))) {
+      a.setAttribute('target', '_blank')
+      a.setAttribute('rel', 'noopener noreferrer')
+    }
+  } else {
+    msgEl.textContent = message.content
+  }
+
+  chatMessagesEl.appendChild(msgEl)
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight
+}
+
+function updateStreamingMessage(content: string) {
+  const lastMsg = panelState.chatMessages[panelState.chatMessages.length - 1]
+  if (lastMsg?.role === 'assistant') {
+    lastMsg.content = content
+    const msgEl = chatMessagesEl.querySelector(`[data-id="${lastMsg.id}"]`)
+    if (msgEl) {
+      msgEl.innerHTML = md.render(content || '...')
+      msgEl.classList.add('streaming')
+      for (const a of Array.from(msgEl.querySelectorAll('a'))) {
+        a.setAttribute('target', '_blank')
+        a.setAttribute('rel', 'noopener noreferrer')
+      }
+      chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight
+    }
+  }
+  updateChatContextStatus()
+}
+
+function finishStreamingMessage() {
+  panelState.chatStreaming = false
+  chatSendBtn.disabled = false
+  chatInputEl.focus()
+
+  const lastMsg = panelState.chatMessages[panelState.chatMessages.length - 1]
+  if (lastMsg?.role === 'assistant') {
+    const msgEl = chatMessagesEl.querySelector(`[data-id="${lastMsg.id}"]`)
+    if (msgEl) {
+      msgEl.classList.remove('streaming')
+    }
+  }
+  updateChatContextStatus()
+  void persistChatHistory()
+}
+
+function sendChatMessage() {
+  if (!chatEnabledValue) return
+  const input = chatInputEl.value.trim()
+  if (!input || panelState.chatStreaming) return
+
+  chatInputEl.value = ''
+  chatInputEl.style.height = 'auto'
+
+  addChatMessage({
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: input,
+    timestamp: Date.now(),
+  })
+
+  addChatMessage({
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    content: '',
+    timestamp: Date.now(),
+  })
+
+  panelState.chatStreaming = true
+  chatSendBtn.disabled = true
+
+  send({
+    type: 'panel:chat',
+    messages: panelState.chatMessages
+      .filter((m) => m.content.length > 0)
+      .map((m) => ({ role: m.role, content: m.content })),
+  })
+}
+
 summarizeBtn.addEventListener('click', () => send({ type: 'panel:summarize' }))
+chatBtn.addEventListener('click', () => {
+  if (!chatEnabledValue) return
+  send({ type: 'panel:startChat' })
+})
 refreshBtn.addEventListener('click', () => send({ type: 'panel:summarize', refresh: true }))
 drawerToggleBtn.addEventListener('click', () => toggleDrawer())
 advancedBtn.addEventListener('click', () => send({ type: 'panel:openOptions' }))
+
+chatBackBtn.addEventListener('click', exitChatMode)
+chatSendBtn.addEventListener('click', sendChatMessage)
+chatInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    sendChatMessage()
+  }
+})
+chatInputEl.addEventListener('input', () => {
+  chatInputEl.style.height = 'auto'
+  chatInputEl.style.height = Math.min(chatInputEl.scrollHeight, 120) + 'px'
+})
 
 sizeEl.addEventListener('input', () => {
   void (async () => {
@@ -882,6 +1359,7 @@ void (async () => {
   sizeEl.value = String(s.fontSize)
   autoValue = s.autoSummarize
   hoverSummariesValue = s.hoverSummaries
+  chatEnabledValue = s.chatEnabled
   autoToggle.update({
     id: 'sidepanel-auto',
     label: 'Auto summarize',
@@ -900,6 +1378,7 @@ void (async () => {
       void patchSettings({ hoverSummaries: checked })
     },
   })
+  applyChatEnabled()
   pickerSettings = {
     scheme: s.colorScheme,
     mode: s.colorMode,

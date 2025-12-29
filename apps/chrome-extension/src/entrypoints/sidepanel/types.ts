@@ -1,10 +1,11 @@
 export type UiState = {
   panelOpen: boolean
   daemon: { ok: boolean; authed: boolean; error?: string }
-  tab: { url: string | null; title: string | null }
+  tab: { id: number | null; url: string | null; title: string | null }
   settings: {
     autoSummarize: boolean
     hoverSummaries: boolean
+    chatEnabled: boolean
     model: string
     length: string
     tokenPresent: boolean
@@ -22,6 +23,13 @@ export type RunStart = {
 
 export type PanelPhase = 'idle' | 'setup' | 'connecting' | 'streaming' | 'error'
 
+export type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+}
+
 export type PanelState = {
   ui: UiState | null
   currentSource: { url: string; title: string | null } | null
@@ -29,4 +37,8 @@ export type PanelState = {
   summaryFromCache: boolean | null
   phase: PanelPhase
   error: string | null
+  inChatMode: boolean
+  chatMessages: ChatMessage[]
+  chatStreaming: boolean
+  chatTranscript: string | null
 }

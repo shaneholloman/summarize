@@ -1,5 +1,6 @@
 import { defineBackground } from 'wxt/utils/define-background'
 
+import { shouldPreferUrlMode } from '../../../../src/content/index.js'
 import { parseSseEvent } from '../../../../src/shared/sse-events.js'
 import { buildDaemonRequestBody } from '../lib/daemon-payload'
 import { loadSettings, patchSettings } from '../lib/settings'
@@ -8,6 +9,8 @@ import { parseSseStream } from '../lib/sse'
 type PanelToBg =
   | { type: 'panel:ready' }
   | { type: 'panel:summarize'; refresh?: boolean }
+  | { type: 'panel:startChat' }
+  | { type: 'panel:chat'; messages: Array<{ role: 'user' | 'assistant'; content: string }> }
   | { type: 'panel:ping' }
   | { type: 'panel:closed' }
   | { type: 'panel:rememberUrl'; url: string }
@@ -23,11 +26,24 @@ type RunStart = {
   reason: string
 }
 
+type ChatReadyPayload = {
+  url: string
+  title: string | null
+  transcript: string
+}
+
+type ChatStartPayload = {
+  id: string
+  url: string
+}
+
 type BgToPanel =
   | { type: 'ui:state'; state: UiState }
   | { type: 'ui:status'; status: string }
   | { type: 'run:start'; run: RunStart }
   | { type: 'run:error'; message: string }
+  | { type: 'chat:ready'; payload: ChatReadyPayload }
+  | { type: 'chat:start'; payload: ChatStartPayload }
 
 type HoverToBg =
   | { type: 'hover:summarize'; requestId: string; url: string; title: string | null }
@@ -41,10 +57,11 @@ type BgToHover =
 type UiState = {
   panelOpen: boolean
   daemon: { ok: boolean; authed: boolean; error?: string }
-  tab: { url: string | null; title: string | null }
+  tab: { id: number | null; url: string | null; title: string | null }
   settings: {
     autoSummarize: boolean
     hoverSummaries: boolean
+    chatEnabled: boolean
     model: string
     length: string
     tokenPresent: boolean
@@ -60,6 +77,7 @@ type ExtractResponse =
 const optionsWindowSize = { width: 940, height: 680 }
 const optionsWindowMin = { width: 820, height: 560 }
 const optionsWindowMargin = 20
+const MIN_CHAT_CHARS = 400
 
 function resolveOptionsUrl(): string {
   const page = chrome.runtime.getManifest().options_ui?.page ?? 'options.html'
@@ -215,6 +233,8 @@ export default defineBackground(() => {
   let inflightUrl: string | null = null
   let runController: AbortController | null = null
   let lastNavAt = 0
+  type CachedExtract = { url: string; title: string | null; text: string }
+  const cachedExtracts = new Map<number, CachedExtract>()
   const hoverControllersByTabId = new Map<
     number,
     { requestId: string; controller: AbortController }
@@ -224,6 +244,16 @@ export default defineBackground(() => {
     if (!panelOpen) return false
     if (panelLastPingAt === 0) return true
     return Date.now() - panelLastPingAt < 45_000
+  }
+
+  const getCachedExtract = (tabId: number, url?: string | null) => {
+    const cached = cachedExtracts.get(tabId) ?? null
+    if (!cached) return null
+    if (url && cached.url !== url) {
+      cachedExtracts.delete(tabId)
+      return null
+    }
+    return cached
   }
 
   const send = async (msg: BgToPanel) => {
@@ -252,10 +282,11 @@ export default defineBackground(() => {
     const state: UiState = {
       panelOpen: isPanelOpen(),
       daemon: { ok: health.ok, authed: authed.ok, error: health.error ?? authed.error },
-      tab: { url: tab?.url ?? null, title: tab?.title ?? null },
+      tab: { id: tab?.id ?? null, url: tab?.url ?? null, title: tab?.title ?? null },
       settings: {
         autoSummarize: settings.autoSummarize,
         hoverSummaries: settings.hoverSummaries,
+        chatEnabled: settings.chatEnabled,
         model: settings.model,
         length: settings.length,
         tokenPresent: Boolean(settings.token.trim()),
@@ -311,6 +342,12 @@ export default defineBackground(() => {
 
     const resolvedTitle = tab.title?.trim() || extracted.title || null
     const resolvedExtracted = { ...extracted, title: resolvedTitle }
+
+    cachedExtracts.set(tab.id, {
+      url: extracted.url,
+      title: resolvedTitle,
+      text: extracted.text,
+    })
 
     sendStatus('Requesting daemon…')
     inflightUrl = extracted.url
@@ -484,11 +521,194 @@ export default defineBackground(() => {
             runController = null
             lastSummarizedUrl = null
             inflightUrl = null
+            cachedExtracts.clear()
             break
           case 'panel:summarize':
             void summarizeActiveTab((msg as { refresh?: boolean }).refresh ? 'refresh' : 'manual', {
               refresh: Boolean((msg as { refresh?: boolean }).refresh),
             })
+            break
+          case 'panel:startChat':
+            void (async () => {
+              const settings = await loadSettings()
+              if (!settings.chatEnabled) {
+                void send({ type: 'run:error', message: 'Chat is disabled in settings' })
+                return
+              }
+              if (!settings.token.trim()) {
+                void send({ type: 'run:error', message: 'Setup required (missing token)' })
+                return
+              }
+
+              const tab = await getActiveTab()
+              if (!tab?.id || !canSummarizeUrl(tab.url)) {
+                void send({ type: 'run:error', message: 'Cannot chat on this page' })
+                return
+              }
+
+              const cached = getCachedExtract(tab.id, tab.url)
+              if (cached) {
+                void send({
+                  type: 'chat:ready',
+                  payload: {
+                    url: cached.url,
+                    title: cached.title,
+                    transcript: cached.text,
+                  },
+                })
+                sendStatus('')
+                return
+              }
+
+              if (!shouldPreferUrlMode(tab.url)) {
+                const extractedAttempt = await extractFromTab(tab.id, settings.maxChars)
+                if (extractedAttempt.ok) {
+                  const extracted = extractedAttempt.data
+                  const text = extracted.text.trim()
+                  if (text.length >= MIN_CHAT_CHARS) {
+                    const cachedExtract = {
+                      url: extracted.url,
+                      title: extracted.title ?? tab.title?.trim() ?? null,
+                      text: extracted.text,
+                    }
+                    cachedExtracts.set(tab.id, cachedExtract)
+                    void send({
+                      type: 'chat:ready',
+                      payload: {
+                        url: cachedExtract.url,
+                        title: cachedExtract.title,
+                        transcript: cachedExtract.text,
+                      },
+                    })
+                    sendStatus('')
+                    return
+                  }
+                } else if (
+                  extractedAttempt.error.toLowerCase().includes('chrome blocked') ||
+                  extractedAttempt.error.toLowerCase().includes('failed to inject')
+                ) {
+                  void send({ type: 'run:error', message: extractedAttempt.error })
+                  sendStatus(`Error: ${extractedAttempt.error}`)
+                  return
+                }
+              }
+
+              sendStatus('Extracting page content…')
+              try {
+                const res = await fetch('http://127.0.0.1:8787/v1/summarize', {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${settings.token.trim()}`,
+                    'content-type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    url: tab.url,
+                    mode: 'url',
+                    extractOnly: true,
+                    maxCharacters: settings.maxChars,
+                  }),
+                })
+                const json = (await res.json()) as {
+                  ok: boolean
+                  extracted?: {
+                    content: string
+                    title: string | null
+                    url: string
+                    wordCount: number
+                    totalCharacters: number
+                    truncated: boolean
+                    transcriptSource: string | null
+                  }
+                  error?: string
+                }
+                if (!res.ok || !json.ok || !json.extracted) {
+                  throw new Error(json.error || `${res.status} ${res.statusText}`)
+                }
+
+                const cachedExtract = {
+                  url: json.extracted.url,
+                  title: json.extracted.title,
+                  text: json.extracted.content,
+                }
+                cachedExtracts.set(tab.id, cachedExtract)
+
+                void send({
+                  type: 'chat:ready',
+                  payload: {
+                    url: cachedExtract.url,
+                    title: cachedExtract.title,
+                    transcript: cachedExtract.text,
+                  },
+                })
+                sendStatus('')
+              } catch (err) {
+                const message = friendlyFetchError(err, 'Extraction failed')
+                void send({ type: 'run:error', message })
+                sendStatus(`Error: ${message}`)
+              }
+            })()
+            break
+          case 'panel:chat':
+            void (async () => {
+              const settings = await loadSettings()
+              if (!settings.chatEnabled) {
+                void send({ type: 'run:error', message: 'Chat is disabled in settings' })
+                return
+              }
+              if (!settings.token.trim()) {
+                void send({ type: 'run:error', message: 'Setup required (missing token)' })
+                return
+              }
+
+              const tab = await getActiveTab()
+              if (!tab?.id || !canSummarizeUrl(tab.url)) {
+                void send({ type: 'run:error', message: 'Cannot chat on this page' })
+                return
+              }
+
+              const cachedExtract = getCachedExtract(tab.id, tab.url)
+              if (!cachedExtract) {
+                void send({ type: 'run:error', message: 'No page content available' })
+                return
+              }
+
+              const chatMessages = (
+                msg as { messages: Array<{ role: 'user' | 'assistant'; content: string }> }
+              ).messages
+
+              sendStatus('Sending to AI…')
+
+              try {
+                const res = await fetch('http://127.0.0.1:8787/v1/chat', {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${settings.token.trim()}`,
+                    'content-type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    url: cachedExtract.url,
+                    title: cachedExtract.title,
+                    pageContent: cachedExtract.text,
+                    messages: chatMessages,
+                    model: settings.model,
+                  }),
+                })
+                const json = (await res.json()) as { ok: boolean; id?: string; error?: string }
+                if (!res.ok || !json.ok || !json.id) {
+                  throw new Error(json.error || `${res.status} ${res.statusText}`)
+                }
+
+                void send({
+                  type: 'chat:start',
+                  payload: { id: json.id, url: cachedExtract.url },
+                })
+                sendStatus('')
+              } catch (err) {
+                const message = friendlyFetchError(err, 'Chat request failed')
+                void send({ type: 'run:error', message })
+                sendStatus(`Error: ${message}`)
+              }
+            })()
             break
           case 'panel:ping':
             break

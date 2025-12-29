@@ -427,9 +427,61 @@ export async function streamTextWithModelId({
   usage: Promise<LlmTokenUsage | null>
   lastError: () => unknown
 }> {
+  const context = promptToContext(prompt)
+  return streamTextWithContext({
+    modelId,
+    apiKeys,
+    context,
+    temperature,
+    maxOutputTokens,
+    timeoutMs,
+    fetchImpl,
+    forceOpenRouter,
+    openaiBaseUrlOverride,
+    anthropicBaseUrlOverride,
+    googleBaseUrlOverride,
+    xaiBaseUrlOverride,
+    forceChatCompletions,
+  })
+}
+
+export async function streamTextWithContext({
+  modelId,
+  apiKeys,
+  context,
+  temperature,
+  maxOutputTokens,
+  timeoutMs,
+  fetchImpl,
+  forceOpenRouter,
+  openaiBaseUrlOverride,
+  anthropicBaseUrlOverride,
+  googleBaseUrlOverride,
+  xaiBaseUrlOverride,
+  forceChatCompletions,
+}: {
+  modelId: string
+  apiKeys: LlmApiKeys
+  context: Context
+  temperature?: number
+  maxOutputTokens?: number
+  timeoutMs: number
+  fetchImpl: typeof fetch
+  forceOpenRouter?: boolean
+  openaiBaseUrlOverride?: string | null
+  anthropicBaseUrlOverride?: string | null
+  googleBaseUrlOverride?: string | null
+  xaiBaseUrlOverride?: string | null
+  forceChatCompletions?: boolean
+}): Promise<{
+  textStream: AsyncIterable<string>
+  canonicalModelId: string
+  provider: 'xai' | 'openai' | 'google' | 'anthropic' | 'zai'
+  usage: Promise<LlmTokenUsage | null>
+  lastError: () => unknown
+}> {
   const parsed = parseGatewayStyleModelId(modelId)
   void fetchImpl
-  const context = promptToContext(prompt)
 
   const controller = new AbortController()
   let timeoutId: ReturnType<typeof setTimeout> | null = null
