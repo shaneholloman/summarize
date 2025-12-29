@@ -280,7 +280,7 @@ export default defineContentScript({
             length: 'short',
             language,
             prompt:
-              'Plain text only (no Markdown). Summarize the linked page concisely in 1-2 sentences; aim for ~200 characters.',
+              'Plain text only (no Markdown). Summarize the linked page concisely in 1-2 sentences; aim for 100-200 characters.',
             mode: 'url',
             maxCharacters: settings.maxChars,
           }),
