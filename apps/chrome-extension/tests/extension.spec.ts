@@ -121,8 +121,12 @@ async function mockDaemonSummarize(harness: ExtensionHarness) {
     harness.context.serviceWorkers()[0] ??
     (await harness.context.waitForEvent('serviceworker', { timeout: 15_000 }))
   await background.evaluate(() => {
-    const originalFetch = globalThis.fetch
-    globalThis.__summarizeCalls = 0
+    const originalFetch =
+      (globalThis.__originalFetch as typeof globalThis.fetch | undefined) ?? globalThis.fetch
+    globalThis.__originalFetch = originalFetch
+    if (typeof globalThis.__summarizeCalls !== 'number') {
+      globalThis.__summarizeCalls = 0
+    }
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
       if (url === 'http://127.0.0.1:8787/health') {
@@ -453,6 +457,7 @@ test('auto summarize reruns after panel reopen', async () => {
     await contentPage.bringToFront()
     await activateTabByUrl(harness, 'https://example.com')
     await waitForActiveTabUrl(harness, 'https://example.com')
+    await mockDaemonSummarize(harness)
     await sendPanelMessage(panel, { type: 'panel:ready' })
     await expect.poll(async () => await getSummarizeCalls(harness)).toBeGreaterThanOrEqual(1)
     await sendPanelMessage(panel, { type: 'panel:rememberUrl', url: activeUrl })
@@ -462,6 +467,7 @@ test('auto summarize reruns after panel reopen', async () => {
     await contentPage.bringToFront()
     await activateTabByUrl(harness, 'https://example.com')
     await waitForActiveTabUrl(harness, 'https://example.com')
+    await mockDaemonSummarize(harness)
     await sendPanelMessage(panel, { type: 'panel:ready' })
     await expect
       .poll(async () => await getSummarizeCalls(harness))
