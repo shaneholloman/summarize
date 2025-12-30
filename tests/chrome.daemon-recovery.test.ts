@@ -51,6 +51,21 @@ describe('chrome/daemon-recovery', () => {
     expect(recovery.getPendingUrl()).toBe('https://example.com')
   })
 
+  it('keeps pending when status updates without recovery check', () => {
+    const recovery = createDaemonRecovery()
+    recovery.recordFailure('https://example.com')
+    recovery.updateStatus(true)
+
+    expect(
+      recovery.maybeRecover({
+        isReady: true,
+        currentUrlMatches: true,
+        isIdle: true,
+      })
+    ).toBe(false)
+    expect(recovery.getPendingUrl()).toBe('https://example.com')
+  })
+
   it('clears pending when URL changes', () => {
     const recovery = createDaemonRecovery()
     recovery.recordFailure('https://example.com')
