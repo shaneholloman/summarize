@@ -308,6 +308,23 @@ test('sidepanel hides chat dock when chat is disabled', async () => {
   }
 })
 
+test('sidepanel updates chat visibility when settings change', async () => {
+  const harness = await launchExtension()
+
+  try {
+    await seedSettings(harness, { chatEnabled: true })
+    const page = await openExtensionPage(harness, 'sidepanel.html', '#title')
+    await expect(page.locator('#chatDock')).toBeVisible()
+
+    await seedSettings(harness, { chatEnabled: false })
+    await expect(page.locator('#chatDock')).toBeHidden()
+    await expect(page.locator('#chatContainer')).toBeHidden()
+    assertNoErrors(harness)
+  } finally {
+    await closeExtension(harness.context, harness.userDataDir)
+  }
+})
+
 test('sidepanel scheme picker supports keyboard selection', async () => {
   const harness = await launchExtension()
 

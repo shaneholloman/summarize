@@ -1943,6 +1943,16 @@ setInterval(() => {
   send({ type: 'panel:ping' })
 }, 25_000)
 
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return
+  const nextSettings = changes.settings?.newValue
+  if (!nextSettings || typeof nextSettings !== 'object') return
+  const nextChatEnabled = (nextSettings as { chatEnabled?: unknown }).chatEnabled
+  if (typeof nextChatEnabled !== 'boolean' || nextChatEnabled === chatEnabledValue) return
+  chatEnabledValue = nextChatEnabled
+  applyChatEnabled()
+})
+
 let lastVisibility = document.visibilityState
 let panelMarkedOpen = document.visibilityState === 'visible'
 
