@@ -233,8 +233,8 @@ function resolveSlidesSettings({
   request: Record<string, unknown>
 }): SlideSettings | null {
   const slidesValue = request.slides
-  const slidesOcrValue =
-    typeof request.slidesOcr === 'undefined' && slidesValue ? true : request.slidesOcr
+  const tesseractAvailable = resolveExecutableInPath('tesseract', env) !== null
+  const slidesOcrValue = tesseractAvailable ? request.slidesOcr : false
   return resolveSlideSettings({
     slides: slidesValue,
     slidesOcr: slidesOcrValue,
