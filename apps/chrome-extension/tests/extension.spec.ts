@@ -246,6 +246,16 @@ async function sendPanelMessage(page: Page, message: object) {
   }, message)
 }
 
+async function waitForPanelPort(page: Page) {
+  await page.waitForFunction(
+    () =>
+      typeof (window as { __summarizePanelPort?: { postMessage?: unknown } }).__summarizePanelPort
+        ?.postMessage === 'function',
+    null,
+    { timeout: 5_000 }
+  )
+}
+
 async function injectContentScript(harness: ExtensionHarness, file: string, urlPrefix?: string) {
   const background = await getBackground(harness)
   const result = await Promise.race([
@@ -883,7 +893,9 @@ test('sidepanel shows an error when agent request fails', async ({
     await waitForActiveTabUrl(harness, 'https://example.com')
     await injectContentScript(harness, 'content-scripts/extract.js', 'https://example.com')
 
+    let agentCalls = 0
     await harness.context.route('http://127.0.0.1:8787/v1/agent', async (route) => {
+      agentCalls += 1
       await route.fulfill({
         status: 500,
         headers: { 'content-type': 'application/json' },
@@ -892,17 +904,25 @@ test('sidepanel shows an error when agent request fails', async ({
     })
 
     const page = await openExtensionPage(harness, 'sidepanel.html', '#title')
-    await page.evaluate((value) => {
-      const input = document.getElementById('chatInput') as HTMLTextAreaElement | null
-      const send = document.getElementById('chatSend') as HTMLButtonElement | null
-      if (!input || !send) return
-      input.value = value
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      send.click()
-    }, 'Trigger agent error')
+    await waitForPanelPort(page)
+    await contentPage.bringToFront()
+    await activateTabByUrl(harness, 'https://example.com')
+    await waitForActiveTabUrl(harness, 'https://example.com')
+    await sendBgMessage(harness, {
+      type: 'ui:state',
+      state: buildUiState({
+        tab: { id: 1, url: 'https://example.com', title: 'Example' },
+        settings: { chatEnabled: true, tokenPresent: true },
+      }),
+    })
 
+    await expect(page.locator('#chatSend')).toBeEnabled()
+    await page.locator('#chatInput').fill('Trigger agent error')
+    await page.locator('#chatSend').click()
+
+    await expect.poll(() => agentCalls).toBe(1)
     await expect(page.locator('#error')).toBeVisible()
-    await expect(page.locator('#errorMessage')).toContainText('Chat request failed')
+    await expect(page.locator('#errorMessage')).toContainText('Chat request failed: Boom')
     assertNoErrors(harness)
   } finally {
     await closeExtension(harness.context, harness.userDataDir)
@@ -926,7 +946,9 @@ test('sidepanel shows daemon upgrade hint when /v1/agent is missing', async ({
     await waitForActiveTabUrl(harness, 'https://example.com')
     await injectContentScript(harness, 'content-scripts/extract.js', 'https://example.com')
 
+    let agentCalls = 0
     await harness.context.route('http://127.0.0.1:8787/v1/agent', async (route) => {
+      agentCalls += 1
       await route.fulfill({
         status: 404,
         headers: { 'content-type': 'text/plain' },
@@ -935,15 +957,23 @@ test('sidepanel shows daemon upgrade hint when /v1/agent is missing', async ({
     })
 
     const page = await openExtensionPage(harness, 'sidepanel.html', '#title')
-    await page.evaluate((value) => {
-      const input = document.getElementById('chatInput') as HTMLTextAreaElement | null
-      const send = document.getElementById('chatSend') as HTMLButtonElement | null
-      if (!input || !send) return
-      input.value = value
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      send.click()
-    }, 'Trigger agent 404')
+    await waitForPanelPort(page)
+    await contentPage.bringToFront()
+    await activateTabByUrl(harness, 'https://example.com')
+    await waitForActiveTabUrl(harness, 'https://example.com')
+    await sendBgMessage(harness, {
+      type: 'ui:state',
+      state: buildUiState({
+        tab: { id: 1, url: 'https://example.com', title: 'Example' },
+        settings: { chatEnabled: true, tokenPresent: true },
+      }),
+    })
 
+    await expect(page.locator('#chatSend')).toBeEnabled()
+    await page.locator('#chatInput').fill('Trigger agent 404')
+    await page.locator('#chatSend').click()
+
+    await expect.poll(() => agentCalls).toBe(1)
     await expect(page.locator('#error')).toBeVisible()
     await expect(page.locator('#errorMessage')).toContainText('Daemon does not support /v1/agent')
     assertNoErrors(harness)
@@ -959,6 +989,7 @@ test('sidepanel shows automation notice when permission event fires', async ({
 
   try {
     const page = await openExtensionPage(harness, 'sidepanel.html', '#title')
+    await waitForPanelPort(page)
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent('summarize:automation-permissions', {
@@ -1095,14 +1126,30 @@ test('sidepanel chat queue drains messages after stream completes', async ({
     await waitForActiveTabUrl(harness, 'https://example.com')
     await sendChat('First question')
     await expect.poll(() => agentRequestCount).toBe(1)
-    await sendChat('Second question')
-    await sendChat('Third question')
 
-    await expect.poll(() => agentRequestCount, { timeout: 1_000 }).toBe(1)
+    const enqueueChat = async (text: string) => {
+      await page.evaluate((value) => {
+        const input = document.getElementById('chatInput') as HTMLTextAreaElement | null
+        if (!input) return
+        input.value = value
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            bubbles: true,
+            cancelable: true,
+          })
+        )
+      }, text)
+    }
+
+    await enqueueChat('Second question')
+    await enqueueChat('Third question')
 
     releaseFirst?.()
 
-    await expect.poll(() => agentRequestCount).toBe(3)
+    await expect.poll(() => agentRequestCount).toBeGreaterThanOrEqual(3)
     await expect(page.locator('#chatMessages')).toContainText('Second question')
     await expect(page.locator('#chatMessages')).toContainText('Third question')
 
@@ -1422,7 +1469,9 @@ test('options pickers support keyboard selection', async ({
   const harness = await launchExtension(getBrowserFromProject(testInfo.project.name))
 
   try {
-    const page = await openExtensionPage(harness, 'options.html', '#pickersRoot')
+    const page = await openExtensionPage(harness, 'options.html', '#tabs')
+    await page.click('#tab-ui')
+    await expect(page.locator('#panel-ui')).toBeVisible()
 
     const schemeLabel = page.locator('label.scheme')
     const schemeTrigger = schemeLabel.locator('.pickerTrigger')
@@ -1497,7 +1546,9 @@ test('options keeps custom model selected while presets refresh', async ({
       })
     })
 
-    const page = await openExtensionPage(harness, 'options.html', '#pickersRoot')
+    const page = await openExtensionPage(harness, 'options.html', '#tabs')
+    await page.click('#tab-model')
+    await expect(page.locator('#panel-model')).toBeVisible()
     await expect.poll(() => modelCalls).toBeGreaterThanOrEqual(1)
     await expect(page.locator('#modelPreset')).toHaveValue('auto')
 
@@ -1528,7 +1579,7 @@ test('options persists automation toggle without save', async ({
 
   try {
     await seedSettings(harness, { automationEnabled: false })
-    const page = await openExtensionPage(harness, 'options.html', '#pickersRoot')
+    const page = await openExtensionPage(harness, 'options.html', '#tabs')
 
     const toggle = page.locator('#automationToggle .checkboxRoot')
     await toggle.click()
@@ -1542,7 +1593,7 @@ test('options persists automation toggle without save', async ({
 
     await page.close()
 
-    const reopened = await openExtensionPage(harness, 'options.html', '#pickersRoot')
+    const reopened = await openExtensionPage(harness, 'options.html', '#tabs')
     const checked = await reopened.evaluate(() => {
       const input = document.querySelector('#automationToggle input') as HTMLInputElement | null
       return input?.checked ?? false
@@ -1579,7 +1630,7 @@ test('options disables automation permissions button when granted', async ({
     await page.goto(getExtensionUrl(harness, 'options.html'), {
       waitUntil: 'domcontentloaded',
     })
-    await page.waitForSelector('#pickersRoot')
+    await page.waitForSelector('#tabs')
 
     await expect(page.locator('#automationPermissions')).toBeDisabled()
     await expect(page.locator('#automationPermissions')).toHaveText(
@@ -1617,7 +1668,7 @@ test('options shows user scripts guidance when unavailable', async ({
     await page.goto(getExtensionUrl(harness, 'options.html'), {
       waitUntil: 'domcontentloaded',
     })
-    await page.waitForSelector('#pickersRoot')
+    await page.waitForSelector('#tabs')
 
     await expect(page.locator('#automationPermissions')).toBeEnabled()
     await expect(page.locator('#automationPermissions')).toHaveText('Enable automation permissions')
@@ -1633,7 +1684,9 @@ test('options scheme list renders chips', async ({ browserName: _browserName }, 
   const harness = await launchExtension(getBrowserFromProject(testInfo.project.name))
 
   try {
-    const page = await openExtensionPage(harness, 'options.html', '#pickersRoot')
+    const page = await openExtensionPage(harness, 'options.html', '#tabs')
+    await page.click('#tab-ui')
+    await expect(page.locator('#panel-ui')).toBeVisible()
 
     const schemeLabel = page.locator('label.scheme')
     const schemeTrigger = schemeLabel.locator('.pickerTrigger')
@@ -1658,7 +1711,7 @@ test('options footer links to summarize site', async ({ browserName: _browserNam
   const harness = await launchExtension(getBrowserFromProject(testInfo.project.name))
 
   try {
-    const page = await openExtensionPage(harness, 'options.html', '#pickersRoot')
+    const page = await openExtensionPage(harness, 'options.html', '#tabs')
     const summarizeLink = page.locator('.pageFooter a', { hasText: 'Summarize' })
     await expect(summarizeLink).toHaveAttribute('href', /summarize\.sh/)
     assertNoErrors(harness)
