@@ -4,15 +4,15 @@
 
 ### Features
 
-- Transcripts: `--timestamps` adds segment-level timings (`transcriptSegments` + `transcriptTimedText`) for YouTube, podcasts, and embedded captions.
+- Slides: extract slide screenshots + OCR for YouTube/direct video URLs in the CLI + extension (#41, thanks @philippb).
+- Chrome Side Panel chat: stream agent replies over SSE and restore chat history from daemon cache (#33, thanks @dougvk).
 - Chrome Side Panel chat: timestamped transcript context plus clickable `[mm:ss]` links that seek the current media.
 - Summaries: when transcript timestamps are available, prompts require timestamped bullet summaries; side panel auto-links `[mm:ss]` in summaries for media.
-- Chrome Side Panel chat: stream agent replies over SSE and restore chat history from daemon cache (#33, thanks @dougvk).
-- Chrome automation: add artifacts tool + REPL helpers for persistent session files (notes/JSON/CSV) and downloads.
-- Chrome automation: expand navigate tool with list/switch tab support and return matching skills after navigation.
+- Transcripts: `--timestamps` adds segment-level timings (`transcriptSegments` + `transcriptTimedText`) for YouTube, podcasts, and embedded captions.
 - CLI: transcribe local audio/video files with mtime-aware transcript cache invalidation (thanks @mvance!).
 - Browser extension: add Firefox sidebar build + multi-browser config (#31, thanks @vlnd0).
-- Slides: extract slide screenshots + OCR for YouTube/direct video URLs in the CLI + extension (#41, thanks @philippb).
+- Chrome automation: add artifacts tool + REPL helpers for persistent session files (notes/JSON/CSV) and downloads.
+- Chrome automation: expand navigate tool with list/switch tab support and return matching skills after navigation.
 
 ### Fixes
 
