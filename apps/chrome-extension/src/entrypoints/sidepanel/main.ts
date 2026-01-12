@@ -1,4 +1,5 @@
 import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from '@mariozechner/pi-ai'
+import { shouldPreferUrlMode } from '@steipete/summarize-core/content/url'
 import MarkdownIt from 'markdown-it'
 
 import { parseSseEvent } from '../../../../../src/shared/sse-events.js'
@@ -2103,12 +2104,12 @@ function maybeShowSetup(state: UiState): boolean {
 function updateControls(state: UiState) {
   const nextTabId = state.tab.id ?? null
   const nextTabUrl = state.tab.url ?? null
+  const preferUrlMode = nextTabUrl ? shouldPreferUrlMode(nextTabUrl) : false
   const tabChanged = nextTabId !== activeTabId
   const urlChanged =
     !tabChanged && nextTabUrl && activeTabUrl && !urlsMatch(nextTabUrl, activeTabUrl)
-  const isYoutubeWatch = nextTabUrl != null && /youtube\.com\/watch|youtu\.be\//i.test(nextTabUrl)
   const nextMediaAvailable =
-    isYoutubeWatch || Boolean(state.media && (state.media.hasVideo || state.media.hasAudio))
+    Boolean(state.media && (state.media.hasVideo || state.media.hasAudio)) || preferUrlMode
   const nextVideoLabel = state.media?.hasAudio && !state.media.hasVideo ? 'Audio' : 'Video'
 
   if (tabChanged) {
@@ -2128,7 +2129,7 @@ function updateControls(state: UiState) {
     } else {
       void migrateChatHistory(previousTabId, nextTabId)
     }
-    inputMode = 'page'
+    inputMode = preferUrlMode ? 'video' : 'page'
     inputModeOverride = null
   } else if (urlChanged) {
     activeTabUrl = nextTabUrl
@@ -2141,6 +2142,10 @@ function updateControls(state: UiState) {
     ) {
       void clearChatHistoryForActiveTab()
       resetChatState()
+    }
+    if (!inputModeOverride) {
+      inputMode = preferUrlMode ? 'video' : 'page'
+      inputModeOverride = null
     }
     if (
       chatEnabledValue &&
@@ -2212,6 +2217,9 @@ function updateControls(state: UiState) {
   if (!isStreaming() || state.status.trim().length > 0) {
     headerController.setStatus(state.status)
   }
+  if (state.status.trim().length === 0 && panelState.phase !== 'error') {
+    clearInlineError()
+  }
   if (!nextMediaAvailable) {
     inputMode = 'page'
     inputModeOverride = null
@@ -2246,12 +2254,19 @@ function updateControls(state: UiState) {
               return
             }
             hideSlideNotice()
+            if (preferUrlMode) {
+              inputMode = 'video'
+              inputModeOverride = 'video'
+            }
           } else {
             hideSlideNotice()
           }
           slidesEnabledValue = nextValue
           await patchSettings({ slidesEnabled: slidesEnabledValue })
           updateSummarizeControl()
+          if (nextValue && mediaAvailable && !isStreaming()) {
+            sendSummarize({ refresh: true })
+          }
         })()
       },
     })

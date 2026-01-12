@@ -19,10 +19,12 @@
 - Chrome Side Panel: scope streams/state per window so other windows don’t wipe active summaries.
 - Chrome Side Panel chat: clear streaming placeholders on errors/aborts.
 - Chrome Side Panel: add inline error toast above chat composer; errors stay visible when scrolled.
+- Chrome Side Panel: clear/hide the inline error toast when no message is present to avoid empty red boxes.
 - Cache: include transcript timestamp requests in extract cache keys so timed summaries don’t reuse plain transcript content.
 - Extract-only: remove implicit 8k cap; new `--max-extract-characters`/daemon `maxExtractCharacters` allow opt-in limits; resolves transcript truncation.
 - Automation: require userScripts (no isolated-world fallback), with improved guidance and in-panel permission notice.
 - Slides: honor explicit tool paths and add interval sampling fallback when scene detection is sparse.
+- Slides: enable the toggle on YouTube watch/short URLs (and other media-preferring URLs), switch the control to Video by default, and auto-refresh a summary when slides are turned on so slide extraction actually runs.
 
 ## 0.9.0 - 2025-12-31
 
