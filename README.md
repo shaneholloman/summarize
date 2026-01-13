@@ -7,10 +7,19 @@ Fast summaries from URLs, files, and media. Works in the terminal, a Chrome Side
 ## 0.10.0 preview highlights (most interesting first)
 
 - Chrome Side Panel **chat** (streaming agent + history) inside the sidebar.
-- **YouTube slides**: screenshots + OCR, timestamped summaries, click to seek.
+- **YouTube slides**: screenshots + OCR + transcript cards, timestamped seek, OCR/Transcript toggle.
 - Media-aware summaries: auto‑detect video/audio vs page content.
 - Streaming Markdown + metrics + cache‑aware status.
 - CLI supports URLs, files, podcasts, YouTube, audio/video, PDFs.
+
+## Feature overview
+
+- URLs, files, and media: web pages, PDFs, images, audio/video, YouTube, podcasts, RSS.
+- Slide extraction for video sources (YouTube/direct media) with OCR + timestamped cards.
+- Transcript-first media flow: published transcripts when available, Whisper fallback when not.
+- Streaming output with Markdown rendering, metrics, and cache-aware status.
+- Local, paid, and free models: OpenAI‑compatible local endpoints, paid providers, plus an OpenRouter free preset.
+- Output modes: Markdown/text, JSON diagnostics, extract-only, metrics, timing, and cost estimates.
 
 ## Get the extension (recommended)
 
@@ -52,6 +61,13 @@ More:
 - Step-by-step install: [apps/chrome-extension/README.md](apps/chrome-extension/README.md)
 - Architecture + troubleshooting: [docs/chrome-extension.md](docs/chrome-extension.md)
 - Firefox compatibility notes: [apps/chrome-extension/docs/firefox.md](apps/chrome-extension/docs/firefox.md)
+
+### Slides (extension)
+
+- Select **Video + Slides** in the Summarize picker.
+- Slides render at the top; expand to full‑width cards with timestamps.
+- Click a slide to seek the video; toggle **Transcript/OCR** when OCR is significant.
+- Requirements: `yt-dlp` + `ffmpeg` for extraction; `tesseract` for OCR. Missing tools show an in‑panel notice.
 
 ### Advanced (unpacked / dev)
 

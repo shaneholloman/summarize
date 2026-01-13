@@ -1,31 +1,25 @@
 # Changelog
 
-## 0.10.1 - 2026-01-13
+## 0.10.0 - Unreleased
 
-### Fixes
+### Highlights
 
-- Chrome Side Panel: show the header progress bar during extracting/summarizing status updates even when cached.
-- Chrome Side Panel: remove duplicate busy spinners from the Summarize button and Slides toggle (single progress indicator only).
-- Chrome Side Panel: add a fallback slide strip when slides are available but no `[slide:N]` tags were used.
-- Chrome Side Panel: move slide strip to the top with an expand/collapse full-width list and timestamped slide seek.
-- Chrome Side Panel: add blur behind slide modal text for readability.
-- Chrome Side Panel chat: keep auto-scroll pinned while streaming when you’re already at the bottom.
-- Chrome Side Panel: fix a startup crash when slide controls initialize before state (ReferenceError).
-- Daemon: emit slides start/progress/done metadata in extended logging for easier debugging.
-
-### Docs
-
-- README: beginner-friendly install flow, clearer daemon rationale, and prominent Chrome Web Store link.
-
-## 0.10.0 - 2026-01-12
+- Chrome Side Panel: **Chat mode** with metrics bar, message queue, and improved context (full transcript + summary metadata, jump-to-latest).
+- Slides: **YouTube slide screenshots + OCR + transcript-aligned cards**, timestamped seek, and an OCR/Transcript toggle.
+- Media-aware summarization in the Side Panel: Page vs Video/Audio dropdown, automatic media preference on video sites, plus visible word count/duration.
+- CLI: robust URL + media extraction with transcript-first workflows and cache-aware streaming.
 
 ### Features
 
 - Slides: extract slide screenshots + OCR for YouTube/direct video URLs in the CLI + extension (#41, thanks @philippb).
+- Slides: top-of-summary slide strip with expand/collapse full-width cards, timestamps, and click-to-seek.
+- Slides: slide descriptions without model calls (transcript windowing, OCR fallback) + OCR/Transcript toggle.
+- Slides: stream slide extraction status/progress and show a single header progress bar (no duplicate spinners).
 - Chrome Side Panel chat: stream agent replies over SSE and restore chat history from daemon cache (#33, thanks @dougvk).
 - Chrome Side Panel chat: timestamped transcript context plus clickable `[mm:ss]` links that seek the current media.
 - Summaries: when transcript timestamps are available, prompts require timestamped bullet summaries; side panel auto-links `[mm:ss]` in summaries for media.
 - Transcripts: `--timestamps` adds segment-level timings (`transcriptSegments` + `transcriptTimedText`) for YouTube, podcasts, and embedded captions.
+- Media-aware summarization in the Side Panel: Page vs Video/Audio dropdown, automatic media preference on video sites, plus visible word count/duration.
 - CLI: transcribe local audio/video files with mtime-aware transcript cache invalidation (thanks @mvance!).
 - Browser extension: add Firefox sidebar build + multi-browser config (#31, thanks @vlnd0).
 - Chrome automation: add artifacts tool + REPL helpers for persistent session files (notes/JSON/CSV) and downloads.
@@ -33,21 +27,24 @@
 
 ### Fixes
 
+- Chrome Side Panel chat: keep auto-scroll pinned while streaming when you’re already at the bottom.
 - Chrome Side Panel: scope streams/state per window so other windows don’t wipe active summaries.
 - Chrome Side Panel chat: support JSON agent replies with explicit SSE/JSON negotiation to avoid “stream ended” errors.
-- Chrome Options: move Advanced overrides into a dedicated tab after Skills.
 - Chrome Side Panel chat: clear streaming placeholders on errors/aborts.
 - Chrome Side Panel: add inline error toast above chat composer; errors stay visible when scrolled.
 - Chrome Side Panel: clear/hide the inline error toast when no message is present to avoid empty red boxes.
 - Cache: include transcript timestamp requests in extract cache keys so timed summaries don’t reuse plain transcript content.
 - Extract-only: remove implicit 8k cap; new `--max-extract-characters`/daemon `maxExtractCharacters` allow opt-in limits; resolves transcript truncation.
 - Automation: require userScripts (no isolated-world fallback), with improved guidance and in-panel permission notice.
-- Slides: honor explicit tool paths and add interval sampling fallback when scene detection is sparse.
-- Slides: enable the toggle on YouTube watch/short URLs (and other media-preferring URLs), switch the control to Video by default, and auto-refresh a summary when slides are turned on so slide extraction actually runs.
-- Slides: stream slide extraction status to the panel and show a spinner on the slides toggle while slides are processing.
-- Slides: include percent progress for slide extraction in the panel status/progress bar.
-- Slides: show video fetch/download progress before slide extraction starts.
-- Slides: fold the UI into “Video / Video + Slides” in the Summarize selector and stream slide images incrementally as they are extracted.
+- Daemon: avoid URL flow crashes when url-preference helpers are missing (ReferenceError guard).
+
+### Improvements
+
+- Daemon: emit slides start/progress/done metadata in extended logging for easier debugging.
+
+### Docs
+
+- README: 0.10.0 preview layout with clearer install flow, daemon rationale, and prominent Chrome Web Store link.
 
 ## 0.9.0 - 2025-12-31
 
