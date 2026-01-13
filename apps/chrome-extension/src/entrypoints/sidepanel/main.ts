@@ -256,7 +256,6 @@ const chatController = new ChatController({
   limits: chatLimits,
   scrollToBottom: () => scrollToBottom(),
   onNewContent: () => {
-    updateAutoScrollLock()
     renderInlineSlides(chatMessagesEl)
   },
 })

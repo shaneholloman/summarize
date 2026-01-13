@@ -9,6 +9,7 @@
 - Chrome Side Panel: add a fallback slide strip when slides are available but no `[slide:N]` tags were used.
 - Chrome Side Panel: move slide strip to the top with an expand/collapse full-width list and timestamped slide seek.
 - Chrome Side Panel: add blur behind slide modal text for readability.
+- Chrome Side Panel chat: keep auto-scroll pinned while streaming when you’re already at the bottom.
 - Daemon: emit slides start/progress/done metadata in extended logging for easier debugging.
 
 ## 0.10.0 - 2026-01-12
