@@ -284,7 +284,57 @@ export async function runUrlFlow({
 
     let extracted = await fetchWithCache(url)
     let extractionUi = deriveExtractionUi(extracted)
-    let slidesResult: SlideExtractionResult | null = null
+    let slidesPlanned: SlideExtractionResult | null = null
+    let slidesExtracted: SlideExtractionResult | null = null
+
+    const buildPlannedSlides = (source: { url: string; sourceId: string; kind: string }) => {
+      if (!flags.slides) return null
+      const durationSeconds = extracted.mediaDurationSeconds
+      if (!durationSeconds || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return null
+
+      const maxSlides = Math.max(1, Math.floor(flags.slides.maxSlides))
+      const minDuration = Math.max(0, flags.slides.minDurationSeconds)
+      const targetCount = Math.min(
+        maxSlides,
+        Math.max(3, Math.round(durationSeconds / Math.max(1, minDuration || 1)))
+      )
+      const intervalSeconds = Math.max(Math.max(2, minDuration), durationSeconds / targetCount)
+      const timestamps: number[] = []
+      for (
+        let t = 0;
+        t < durationSeconds && timestamps.length < targetCount;
+        t += intervalSeconds
+      ) {
+        timestamps.push(t)
+      }
+      if (timestamps.length === 0) return null
+      const slides = timestamps.map((timestamp, index) => ({
+        index: index + 1,
+        timestamp,
+        imagePath: '',
+      }))
+
+      return {
+        sourceUrl: source.url,
+        sourceKind: source.kind,
+        sourceId: source.sourceId,
+        slidesDir: '',
+        sceneThreshold: flags.slides.sceneThreshold,
+        autoTuneThreshold: flags.slides.autoTuneThreshold,
+        autoTune: {
+          enabled: false,
+          chosenThreshold: flags.slides.sceneThreshold,
+          confidence: 0,
+          strategy: 'none',
+        },
+        maxSlides: flags.slides.maxSlides,
+        minSlideDuration: flags.slides.minDurationSeconds,
+        ocrRequested: flags.slides.ocr,
+        ocrAvailable: false,
+        slides,
+        warnings: ['planned'],
+      } as SlideExtractionResult
+    }
 
     const isCachedSlidesValid = async (
       cached: SlideExtractionResult,
@@ -308,11 +358,21 @@ export async function runUrlFlow({
       return true
     }
 
-    const runSlidesExtraction = async () => {
-      if (!flags.slides || slidesResult) return
+    const runSlidesExtraction = async (): Promise<SlideExtractionResult | null> => {
+      if (!flags.slides) return null
+      if (slidesExtracted) return slidesExtracted
       const source = resolveSlideSource({ url, extracted })
       if (!source) {
         throw new Error('Slides are only supported for YouTube or direct video URLs.')
+      }
+      if (!slidesPlanned) {
+        slidesPlanned = buildPlannedSlides(source)
+        if (slidesPlanned) {
+          ctx.hooks.onSlidesExtracted?.(slidesPlanned)
+          ctx.hooks.onSlidesProgress?.(
+            `Slides: planned (${slidesPlanned.slides.length.toString()})`
+          )
+        }
       }
       const slidesCacheKey =
         cacheStore && cacheState.mode === 'default'
@@ -322,10 +382,10 @@ export async function runUrlFlow({
         const cached = cacheStore.getJson<SlideExtractionResult>('slides', slidesCacheKey)
         if (cached && (await isCachedSlidesValid(cached, source))) {
           writeVerbose(io.stderr, flags.verbose, 'cache hit slides', flags.verboseColor)
-          slidesResult = cached
-          ctx.hooks.onSlidesExtracted?.(slidesResult)
+          slidesExtracted = cached
+          ctx.hooks.onSlidesExtracted?.(slidesExtracted)
           ctx.hooks.onSlidesProgress?.('Slides: cached 100%')
-          return
+          return slidesExtracted
         }
         writeVerbose(io.stderr, flags.verbose, 'cache miss slides', flags.verboseColor)
       }
@@ -333,8 +393,9 @@ export async function runUrlFlow({
         spinner.setText('Extracting slides…')
         oscProgress.setIndeterminate('Extracting slides')
       }
-      ctx.hooks.onSlidesProgress?.('Slides: extracting 0%')
-      slidesResult = await extractSlidesForSource({
+      // Prefer indeterminate progress until we get real percentage updates from the slide pipeline.
+      ctx.hooks.onSlidesProgress?.('Slides: extracting')
+      slidesExtracted = await extractSlidesForSource({
         source,
         settings: flags.slides,
         noCache: cacheState.mode === 'bypass',
@@ -348,19 +409,20 @@ export async function runUrlFlow({
           onSlidesProgress: ctx.hooks.onSlidesProgress ?? undefined,
         },
       })
-      if (slidesResult) {
-        ctx.hooks.onSlidesExtracted?.(slidesResult)
+      if (slidesExtracted) {
+        ctx.hooks.onSlidesExtracted?.(slidesExtracted)
         ctx.hooks.onSlidesProgress?.(
-          `Slides: done (${slidesResult.slides.length.toString()} slides) 100%`
+          `Slides: done (${slidesExtracted.slides.length.toString()} slides) 100%`
         )
         if (slidesCacheKey && cacheStore) {
-          cacheStore.setJson('slides', slidesCacheKey, slidesResult, cacheState.ttlMs)
+          cacheStore.setJson('slides', slidesCacheKey, slidesExtracted, cacheState.ttlMs)
           writeVerbose(io.stderr, flags.verbose, 'cache write slides', flags.verboseColor)
         }
       }
       if (flags.progressEnabled) {
         updateSummaryProgress()
       }
+      return slidesExtracted
     }
 
     const updateSummaryProgress = () => {
@@ -419,7 +481,7 @@ export async function runUrlFlow({
         extractionUi = deriveExtractionUi(extracted)
         updateSummaryProgress()
       } else if (extracted.video.kind === 'direct') {
-        await runSlidesExtraction()
+        const directVideoSlides = await runSlidesExtraction()
         const wantsVideoUnderstanding =
           flags.videoMode === 'understand' || flags.videoMode === 'auto'
         // Direct video URLs require a model that can consume video attachments (currently Gemini).
@@ -452,9 +514,7 @@ export async function runUrlFlow({
               if (flags.progressEnabled) spinner.setText(`Summarizing video (model: ${modelId})…`)
             },
           })
-          const slideCount = slidesResult
-            ? (slidesResult as SlideExtractionResult).slides.length
-            : null
+          const slideCount = directVideoSlides ? directVideoSlides.slides.length : null
           hooks.writeViaFooter([
             ...extractionUi.footerParts,
             ...(chosenModel ? [`model ${chosenModel}`] : []),
@@ -465,7 +525,14 @@ export async function runUrlFlow({
       }
     }
 
-    await runSlidesExtraction()
+    // Start slides in parallel; the prompt uses planned timestamps.
+    if (flags.slides) {
+      void runSlidesExtraction().catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        ctx.hooks.onSlidesProgress?.(`Slides: failed (${message})`)
+        writeVerbose(io.stderr, flags.verbose, `slides failed: ${message}`, flags.verboseColor)
+      })
+    }
 
     hooks.onExtracted?.(extracted)
 
@@ -476,7 +543,7 @@ export async function runUrlFlow({
       promptOverride: flags.promptOverride ?? null,
       lengthInstruction: flags.lengthInstruction ?? null,
       languageInstruction: flags.languageInstruction ?? null,
-      slides: slidesResult,
+      slides: slidesExtracted ?? slidesPlanned,
     })
 
     // Whisper transcription costs need to be folded into the finish line totals.
@@ -527,7 +594,7 @@ export async function runUrlFlow({
         prompt,
         effectiveMarkdownMode: markdown.effectiveMarkdownMode,
         transcriptionCostLabel,
-        slides: slidesResult,
+        slides: slidesExtracted ?? slidesPlanned,
       })
       return
     }
@@ -549,7 +616,7 @@ export async function runUrlFlow({
       effectiveMarkdownMode: markdown.effectiveMarkdownMode,
       transcriptionCostLabel,
       onModelChosen,
-      slides: slidesResult,
+      slides: slidesExtracted ?? slidesPlanned,
     })
   } finally {
     hooks.clearProgressIfCurrent(clearProgressLine)

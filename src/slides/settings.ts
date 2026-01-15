@@ -84,7 +84,7 @@ export function resolveSlideSettings(input: SlideSettingsInput): SlideSettings |
   const minDurationSeconds =
     parseNumberInRange(input.slidesMinDuration, '--slides-min-duration', {
       min: 0,
-      max: 120,
+      max: 86_400,
     }) ?? DEFAULT_MIN_DURATION_SECONDS
   return {
     enabled,

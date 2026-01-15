@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createReadStream, promises as fs } from 'node:fs'
 import http from 'node:http'
+import path from 'node:path'
 import { Writable } from 'node:stream'
 import type { CacheState } from '../cache.js'
 import { loadSummarizeConfig } from '../config.js'
@@ -260,13 +261,12 @@ function resolveSlidesSettings({
 function buildSlidesPayload({
   slides,
   port,
-  sessionId,
 }: {
   slides: SlideExtractionResult
   port: number
-  sessionId: string
 }): SseSlidesData {
-  const baseUrl = `http://127.0.0.1:${port}/v1/summarize/${sessionId}/slides`
+  // Use a stable URL that survives session GC, so images don't break while scrolling.
+  const baseUrl = `http://127.0.0.1:${port}/v1/slides/${slides.sourceId}`
   return {
     sourceUrl: slides.sourceUrl,
     sourceId: slides.sourceId,
@@ -275,7 +275,11 @@ function buildSlidesPayload({
     slides: slides.slides.map((slide) => ({
       index: slide.index,
       timestamp: slide.timestamp,
-      imageUrl: `${baseUrl}/${slide.index}`,
+      imageUrl: `${baseUrl}/${slide.index}${
+        typeof slide.imageVersion === 'number' && slide.imageVersion > 0
+          ? `?v=${slide.imageVersion}`
+          : ''
+      }`,
       ocrText: slide.ocrText ?? null,
       ocrConfidence: slide.ocrConfidence ?? null,
     })),
@@ -758,7 +762,6 @@ export async function runDaemonServer({
                           buildSlidesPayload({
                             slides,
                             port,
-                            sessionId: session.id,
                           }),
                           onSessionEvent
                         )
@@ -815,14 +818,24 @@ export async function runDaemonServer({
                           warnings: [],
                         }
                         liveSlides = nextSlides
-                        nextSlides.slides.push(slide)
+                        const existingIndex = nextSlides.slides.findIndex(
+                          (item) => item.index === slide.index
+                        )
+                        if (existingIndex >= 0) {
+                          nextSlides.slides[existingIndex] = {
+                            ...nextSlides.slides[existingIndex],
+                            ...slide,
+                          }
+                        } else {
+                          nextSlides.slides.push(slide)
+                        }
+                        nextSlides.slides.sort((a, b) => a.index - b.index)
                         session.slides = nextSlides
                         emitSlides(
                           session,
                           buildSlidesPayload({
                             slides: nextSlides,
                             port,
-                            sessionId: session.id,
                           }),
                           onSessionEvent
                         )
@@ -1069,7 +1082,7 @@ export async function runDaemonServer({
         json(
           res,
           200,
-          { ok: true, slides: buildSlidesPayload({ slides: session.slides, port, sessionId: id }) },
+          { ok: true, slides: buildSlidesPayload({ slides: session.slides, port }) },
           cors
         )
         return
@@ -1098,6 +1111,84 @@ export async function runDaemonServer({
             ...cors,
           })
           const stream = createReadStream(slide.imagePath)
+          stream.pipe(res)
+          stream.on('error', () => res.end())
+        } catch {
+          json(res, 404, { ok: false, error: 'not found' }, cors)
+        }
+        return
+      }
+
+      const stableSlideImageMatch = pathname.match(/^\/v1\/slides\/([^/]+)\/(\d+)$/)
+      if (req.method === 'GET' && stableSlideImageMatch) {
+        const sourceId = stableSlideImageMatch[1]
+        const index = Number(stableSlideImageMatch[2])
+        if (!sourceId || !Number.isFinite(index) || index <= 0) {
+          json(res, 404, { ok: false, error: 'not found' }, cors)
+          return
+        }
+
+        const slidesRoot = path.resolve(resolveHomeDir(env), '.summarize', 'slides')
+        const slidesDir = path.join(slidesRoot, sourceId)
+        const payloadPath = path.join(slidesDir, 'slides.json')
+
+        const resolveFromDisk = async (): Promise<string | null> => {
+          const raw = await fs.readFile(payloadPath, 'utf8').catch(() => null)
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as SlideExtractionResult
+              const slide = parsed?.slides?.find?.((item) => item?.index === index)
+              if (slide?.imagePath) return slide.imagePath
+            } catch {
+              // fall through
+            }
+          }
+          const prefix = `slide_${String(index).padStart(4, '0')}`
+          const entries = await fs.readdir(slidesDir).catch(() => null)
+          if (!entries) return null
+          const candidates = entries
+            .filter((name) => name.startsWith(prefix) && name.endsWith('.png'))
+            .map((name) => path.join(slidesDir, name))
+          if (candidates.length === 0) return null
+          let best: { filePath: string; mtimeMs: number } | null = null
+          for (const filePath of candidates) {
+            const stat = await fs.stat(filePath).catch(() => null)
+            if (!stat?.isFile()) continue
+            const mtimeMs = stat.mtimeMs
+            if (!best || mtimeMs > best.mtimeMs) best = { filePath, mtimeMs }
+          }
+          return best?.filePath ?? null
+        }
+
+        const filePath = await resolveFromDisk()
+        if (!filePath) {
+          // Return a tiny transparent PNG (placeholder) instead of 404 to avoid broken-image icons
+          // while extraction is still running.
+          const placeholder = Buffer.from(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO3kq0cAAAAASUVORK5CYII=',
+            'base64'
+          )
+          res.writeHead(200, {
+            'content-type': 'image/png',
+            'content-length': placeholder.length.toString(),
+            'cache-control': 'no-store',
+            'x-summarize-slide-ready': '0',
+            ...cors,
+          })
+          res.end(placeholder)
+          return
+        }
+
+        try {
+          const stat = await fs.stat(filePath)
+          res.writeHead(200, {
+            'content-type': 'image/png',
+            'content-length': stat.size.toString(),
+            'cache-control': 'no-store',
+            'x-summarize-slide-ready': '1',
+            ...cors,
+          })
+          const stream = createReadStream(filePath)
           stream.pipe(res)
           stream.on('error', () => res.end())
         } catch {

@@ -10,6 +10,11 @@ export type SlideImage = {
   index: number
   timestamp: number
   imagePath: string
+  /**
+   * Bump when the underlying image file changes (e.g. thumbnail improvement),
+   * so clients can cache-bust URLs.
+   */
+  imageVersion?: number
   ocrText?: string | null
   ocrConfidence?: number | null
 }
