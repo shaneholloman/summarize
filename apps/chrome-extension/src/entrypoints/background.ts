@@ -1286,7 +1286,7 @@ export default defineBackground(() => {
         slides: wantsSlides
           ? {
               enabled: true,
-              ocr: false,
+              ocr: true,
               maxSlides: slideAuto.maxSlides,
               minDurationSeconds: slideAuto.minDurationSeconds,
             }
