@@ -1053,6 +1053,7 @@ async function extractFramesAtTimestamps({
         quality,
         score: scoreQuality(quality, 0),
       }
+      let selectedTimestamp = baseTimestamp
       let didReplace = false
       const minImproveDelta = shouldPreferBrighterFirstSlide ? 0.015 : 0.03
       for (const offsetSeconds of candidateOffsets) {
@@ -1087,6 +1088,7 @@ async function extractFramesAtTimestamps({
               }
             }
             didReplace = true
+            selectedTimestamp = candidateTimestamp
           } else {
             await fs.rm(tempPath, { force: true }).catch(() => null)
           }
@@ -1097,10 +1099,19 @@ async function extractFramesAtTimestamps({
       if (!didReplace) return
       const updatedVersion = Date.now()
       const slide = slides[frame.index - 1]
-      if (slide) slide.imageVersion = updatedVersion
+      if (slide) {
+        slide.imageVersion = updatedVersion
+        slide.timestamp = selectedTimestamp
+      }
+      if (selectedTimestamp !== frame.timestamp) {
+        const offsetSeconds = (selectedTimestamp - frame.timestamp).toFixed(2)
+        logSlides(
+          `thumbnail adjust slide=${frame.index} ts=${frame.timestamp.toFixed(2)}s -> ${selectedTimestamp.toFixed(2)}s offset=${offsetSeconds}s`
+        )
+      }
       onSlide?.({
         index: frame.index,
-        timestamp: frame.timestamp,
+        timestamp: selectedTimestamp,
         imagePath: frame.imagePath,
         imageVersion: updatedVersion,
       })
