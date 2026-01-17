@@ -13,7 +13,7 @@ import { formatModelLabelForDisplay } from '../run/finish-line.js'
 import { resolveRunOverrides } from '../run/run-settings.js'
 import { encodeSseEvent, type SseEvent, type SseSlidesData } from '../shared/sse-events.js'
 import type { SlideExtractionResult, SlideSettings } from '../slides/index.js'
-import { resolveSlideSettings } from '../slides/index.js'
+import { resolveSlideImagePath, resolveSlideSettings } from '../slides/index.js'
 import { resolvePackageVersion } from '../version.js'
 import { completeAgentResponse, streamAgentResponse } from './agent.js'
 import { type DaemonRequestedMode, resolveAutoDaemonMode } from './auto-mode.js'
@@ -1347,7 +1347,10 @@ export async function runDaemonServer({
             try {
               const parsed = JSON.parse(raw) as SlideExtractionResult
               const slide = parsed?.slides?.find?.((item) => item?.index === index)
-              if (slide?.imagePath) return slide.imagePath
+              if (slide?.imagePath) {
+                const resolved = resolveSlideImagePath(slidesDir, slide.imagePath)
+                if (resolved) return resolved
+              }
             } catch {
               // fall through
             }

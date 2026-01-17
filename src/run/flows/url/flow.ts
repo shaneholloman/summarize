@@ -1,5 +1,3 @@
-import { promises as fs } from 'node:fs'
-
 import * as urlUtils from '@steipete/summarize-core/content/url'
 
 import { buildExtractCacheKey, buildSlidesCacheKey } from '../../../cache.js'

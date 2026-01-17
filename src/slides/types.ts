@@ -31,6 +31,7 @@ export type SlideExtractionResult = {
   sourceKind: SlideSourceKind
   sourceId: string
   slidesDir: string
+  slidesDirId?: string | null
   sceneThreshold: number
   autoTuneThreshold: boolean
   autoTune: SlideAutoTune

@@ -8,7 +8,12 @@ import type { ExtractedLinkContent } from '../content/index.js'
 import { extractYouTubeVideoId, isDirectMediaUrl, isYouTubeUrl } from '../content/index.js'
 import { resolveExecutableInPath } from '../run/env.js'
 import type { SlideSettings } from './settings.js'
-import { readSlidesCacheIfValid, resolveSlidesDir } from './store.js'
+import {
+  buildSlidesDirId,
+  readSlidesCacheIfValid,
+  resolveSlidesDir,
+  serializeSlideImagePath,
+} from './store.js'
 import type {
   SlideAutoTune,
   SlideExtractionResult,
@@ -522,6 +527,7 @@ export async function extractSlidesForSource({
           sourceKind: source.kind,
           sourceId: source.sourceId,
           slidesDir,
+          slidesDirId: buildSlidesDirId(slidesDir),
           sceneThreshold: settings.sceneThreshold,
           autoTuneThreshold: settings.autoTuneThreshold,
           autoTune: detection.autoTune,
@@ -2049,11 +2055,13 @@ function estimateOcrConfidence(text: string): number {
 }
 
 async function writeSlidesJson(result: SlideExtractionResult, slidesDir: string): Promise<void> {
+  const slidesDirId = result.slidesDirId ?? buildSlidesDirId(slidesDir)
   const payload = {
     sourceUrl: result.sourceUrl,
     sourceKind: result.sourceKind,
     sourceId: result.sourceId,
     slidesDir,
+    slidesDirId,
     sceneThreshold: result.sceneThreshold,
     autoTuneThreshold: result.autoTuneThreshold,
     autoTune: result.autoTune,
@@ -2063,7 +2071,10 @@ async function writeSlidesJson(result: SlideExtractionResult, slidesDir: string)
     ocrAvailable: result.ocrAvailable,
     slideCount: result.slides.length,
     warnings: result.warnings,
-    slides: result.slides,
+    slides: result.slides.map((slide) => ({
+      ...slide,
+      imagePath: serializeSlideImagePath(slidesDir, slide.imagePath),
+    })),
   }
   await fs.writeFile(path.join(slidesDir, 'slides.json'), JSON.stringify(payload, null, 2), 'utf8')
 }
