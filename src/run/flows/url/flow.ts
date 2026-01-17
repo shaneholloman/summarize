@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs'
+import path from 'node:path'
 
 import * as urlUtils from '@steipete/summarize-core/content/url'
 
@@ -345,10 +346,12 @@ export async function runUrlFlow({
 
     const isCachedSlidesValid = async (
       cached: SlideExtractionResult,
-      source: { sourceId: string; kind: string }
+      source: { sourceId: string; kind: string },
+      expectedSlidesDir: string
     ): Promise<boolean> => {
       if (!cached || cached.slides.length === 0) return false
       if (cached.sourceId !== source.sourceId || cached.sourceKind !== source.kind) return false
+      if (!cached.slidesDir || cached.slidesDir !== expectedSlidesDir) return false
       try {
         await fs.stat(cached.slidesDir)
       } catch {
@@ -390,9 +393,10 @@ export async function runUrlFlow({
           cacheStore && cacheState.mode === 'default'
             ? buildSlidesCacheKey({ url: source.url, settings: flags.slides })
             : null
+        const expectedSlidesDir = path.join(flags.slides.outputDir, source.sourceId)
         if (slidesCacheKey && cacheStore) {
           const cached = cacheStore.getJson<SlideExtractionResult>('slides', slidesCacheKey)
-          if (cached && (await isCachedSlidesValid(cached, source))) {
+          if (cached && (await isCachedSlidesValid(cached, source, expectedSlidesDir))) {
             writeVerbose(io.stderr, flags.verbose, 'cache hit slides', flags.verboseColor)
             slidesExtracted = cached
             ctx.hooks.onSlidesExtracted?.(slidesExtracted)
