@@ -223,6 +223,15 @@ See: https://github.com/openai/whisper for setup details`)
       false
     )
 
+    // If extract mode, output the transcript directly without LLM summarization
+    if (ctx.extractMode) {
+      ctx.stdout.write(extracted.content)
+      if (!extracted.content.endsWith('\n')) {
+        ctx.stdout.write('\n')
+      }
+      return
+    }
+
     // Call the standard asset summarization with the transcript
     const { summarizeAsset } = await import('./summary.js')
     await summarizeAsset(ctx, {
