@@ -324,7 +324,7 @@ export function createSlidesSummaryStreamHandler({
   let buffered = ''
   const renderedSlides = new Set<number>()
   let visible = ''
-  const slideTagRegex = /\[slide:(\d+)\]/i
+  const slideTagRegex = /\[\s*slide\s*:\s*(\d+)\s*\]/i
   const slideLabelRegex = /(^|\n)[\t ]*slide\s+(\d+)(?:\s*[\u00b7:-].*)?(?=\n|$)/i
 
   const handleMarkdownChunk = (nextVisible: string, prevVisible: string) => {

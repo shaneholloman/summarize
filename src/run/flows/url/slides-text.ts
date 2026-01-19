@@ -26,7 +26,7 @@ const SLIDE_WINDOW_SECONDS_BY_PRESET: Record<SummaryLength, number> = {
 const SLIDE_WINDOW_SECONDS_MIN = 30
 const SLIDE_WINDOW_SECONDS_MAX = 180
 
-const SLIDE_TAG_PATTERN = /^\[slide:(\d+)\]\s*(.*)$/i
+const SLIDE_TAG_PATTERN = /^\[\s*slide\s*:\s*(\d+)\s*\]\s*(.*)$/i
 const SLIDE_LABEL_PATTERN = /^(?:\[)?slide\s+(\d+)(?:\])?(?:\s*[\u00b7:-]\s*.*)?$/i
 
 const clampNumber = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
@@ -107,7 +107,7 @@ export function parseSlideSummariesFromMarkdown(markdown: string): Map<number, s
 export function extractSlideMarkers(markdown: string): number[] {
   if (!markdown.trim()) return []
   const indexes: number[] = []
-  const regex = /\[slide:(\d+)\]/gi
+  const regex = /\[\s*slide\s*:\s*(\d+)\s*\]/gi
   let match = regex.exec(markdown)
   while (match) {
     const index = Number.parseInt(match[1] ?? '', 10)
