@@ -1286,8 +1286,8 @@ test('sidepanel shows an error when agent request fails', async ({
     await page.locator('#chatSend').click()
 
     await expect.poll(() => agentCalls).toBe(1)
-    await expect(page.locator('#error')).toBeVisible()
-    await expect(page.locator('#errorMessage')).toContainText('Chat request failed: Boom')
+    await expect(page.locator('#inlineError')).toBeVisible()
+    await expect(page.locator('#inlineErrorMessage')).toContainText('Chat request failed: Boom')
     await expect(page.locator('.chatMessage.assistant.streaming')).toHaveCount(0)
     assertNoErrors(harness)
   } finally {
@@ -1340,8 +1340,10 @@ test('sidepanel shows daemon upgrade hint when /v1/agent is missing', async ({
     await page.locator('#chatSend').click()
 
     await expect.poll(() => agentCalls).toBe(1)
-    await expect(page.locator('#error')).toBeVisible()
-    await expect(page.locator('#errorMessage')).toContainText('Daemon does not support /v1/agent')
+    await expect(page.locator('#inlineError')).toBeVisible()
+    await expect(page.locator('#inlineErrorMessage')).toContainText(
+      'Daemon does not support /v1/agent'
+    )
     assertNoErrors(harness)
   } finally {
     await closeExtension(harness.context, harness.userDataDir)
