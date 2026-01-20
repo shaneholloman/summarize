@@ -31,6 +31,7 @@
 - Prompts: enforce no-ads/no-skipped language and italicized standout excerpts (no quotation marks).
 - Media: route direct media URLs to the transcription pipeline and raise the local media limit to 2GB (#47, thanks @n0an).
 - Slides: render Slide X/Y labels and parse slide markers more robustly in streaming output.
+- Slides: progress updates during yt-dlp downloads and OSC progress mirrors slide extraction.
 - Chrome Side Panel chat: keep auto-scroll pinned while streaming when you’re already at the bottom.
 - Chrome Side Panel: scope streams/state per window so other windows don’t wipe active summaries.
 - Chrome Side Panel chat: support JSON agent replies with explicit SSE/JSON negotiation to avoid “stream ended” errors.
@@ -41,6 +42,7 @@
 - Extract-only: remove implicit 8k cap; new `--max-extract-characters`/daemon `maxExtractCharacters` allow opt-in limits; resolves transcript truncation.
 - Automation: require userScripts (no isolated-world fallback), with improved guidance and in-panel permission notice.
 - Daemon: avoid URL flow crashes when url-preference helpers are missing (ReferenceError guard).
+- CLI: clear OSC progress on SIGINT/SIGTERM to avoid stuck indicators.
 
 ### Improvements
 
