@@ -12,6 +12,7 @@ import {
   normalizeContentForHash,
 } from '../../../cache.js'
 import type { CliProvider, SummarizeConfig } from '../../../config.js'
+import type { MediaCache } from '../../../content/index.js'
 import type { LlmCall, RunMetricsReport } from '../../../costs.js'
 import type { OutputLanguage } from '../../../language.js'
 import { formatOutputLanguageForJson } from '../../../language.js'
@@ -255,6 +256,7 @@ export type AssetSummaryContext = {
   estimateCostUsd: () => Promise<number | null>
   llmCalls: LlmCall[]
   cache: CacheState
+  mediaCache: MediaCache | null
   apiStatus: {
     xaiApiKey: string | null
     apiKey: string | null

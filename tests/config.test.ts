@@ -385,6 +385,90 @@ describe('config loading', () => {
     })
   })
 
+  it('parses cache media config', () => {
+    const { root } = writeJsonConfig({
+      cache: {
+        media: {
+          enabled: true,
+          maxMb: 512,
+          ttlDays: 3,
+          path: '/tmp/summarize-media',
+          verify: 'hash',
+        },
+      },
+    })
+    expect(loadSummarizeConfig({ env: { HOME: root } }).config).toEqual({
+      cache: {
+        media: {
+          enabled: true,
+          maxMb: 512,
+          ttlDays: 3,
+          path: '/tmp/summarize-media',
+          verify: 'hash',
+        },
+      },
+    })
+  })
+
+  it('rejects invalid cache media settings', () => {
+    const { root: badMedia } = writeJsonConfig({ cache: { media: 'nope' } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badMedia } })).toThrow(/cache\.media/)
+
+    const { root: badMax } = writeJsonConfig({ cache: { media: { maxMb: 'nope' } } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badMax } })).toThrow(/cache\.media\.maxMb/)
+
+    const { root: badTtl } = writeJsonConfig({ cache: { media: { ttlDays: 'nope' } } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badTtl } })).toThrow(/cache\.media\.ttlDays/)
+
+    const { root: badPath } = writeJsonConfig({ cache: { media: { path: 123 } } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badPath } })).toThrow(/cache\.media\.path/)
+
+    const { root: badVerify } = writeJsonConfig({ cache: { media: { verify: 'nope' } } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badVerify } })).toThrow(/cache\.media\.verify/)
+  })
+
+  it('parses slides config', () => {
+    const { root } = writeJsonConfig({
+      slides: {
+        enabled: true,
+        ocr: false,
+        dir: '/tmp/slides',
+        sceneThreshold: 0.5,
+        max: 12,
+        minDuration: 1.5,
+      },
+    })
+    expect(loadSummarizeConfig({ env: { HOME: root } }).config).toEqual({
+      slides: {
+        enabled: true,
+        ocr: false,
+        dir: '/tmp/slides',
+        sceneThreshold: 0.5,
+        max: 12,
+        minDuration: 1.5,
+      },
+    })
+  })
+
+  it('rejects invalid slides config', () => {
+    const { root: badSlides } = writeJsonConfig({ slides: 'nope' })
+    expect(() => loadSummarizeConfig({ env: { HOME: badSlides } })).toThrow(
+      /"slides" must be an object/
+    )
+
+    const { root: badDir } = writeJsonConfig({ slides: { dir: 123 } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badDir } })).toThrow(/slides\.dir/)
+
+    const { root: badScene } = writeJsonConfig({ slides: { sceneThreshold: 2 } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badScene } })).toThrow(/slides\.sceneThreshold/)
+
+    const { root: badMax } = writeJsonConfig({ slides: { max: 1.2 } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badMax } })).toThrow(/slides\.max/)
+
+    const { root: badMin } = writeJsonConfig({ slides: { minDuration: -1 } })
+    expect(() => loadSummarizeConfig({ env: { HOME: badMin } })).toThrow(/slides\.minDuration/)
+  })
+
   it('rejects invalid cli enabled providers', () => {
     const { root } = writeJsonConfig({ cli: { enabled: ['nope'] } })
     expect(() => loadSummarizeConfig({ env: { HOME: root } })).toThrow(/unknown CLI provider/)

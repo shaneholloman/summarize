@@ -25,3 +25,25 @@ export interface TranscriptCache {
   get(args: { url: string; fileMtime?: number | null }): Promise<TranscriptCacheGetResult | null>
   set(args: TranscriptCacheSetArgs): Promise<void>
 }
+
+export type MediaCacheEntry = {
+  url: string
+  filePath: string
+  sizeBytes: number | null
+  sha256: string | null
+  mediaType: string | null
+  filename: string | null
+  createdAtMs: number
+  lastAccessAtMs: number
+  expiresAtMs: number | null
+}
+
+export interface MediaCache {
+  get(args: { url: string }): Promise<MediaCacheEntry | null>
+  put(args: {
+    url: string
+    filePath: string
+    mediaType?: string | null
+    filename?: string | null
+  }): Promise<MediaCacheEntry | null>
+}

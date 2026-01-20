@@ -35,6 +35,15 @@ export type OpenAiConfig = {
   whisperUsdPerMinute?: number
 }
 
+export type MediaCacheVerifyMode = 'none' | 'size' | 'hash'
+export type MediaCacheConfig = {
+  enabled?: boolean
+  maxMb?: number
+  ttlDays?: number
+  path?: string
+  verify?: MediaCacheVerifyMode
+}
+
 export type AnthropicConfig = {
   /**
    * Override the Anthropic API base URL (e.g. a proxy).
@@ -130,6 +139,7 @@ export type SummarizeConfig = {
     maxMb?: number
     ttlDays?: number
     path?: string
+    media?: MediaCacheConfig
   }
   /**
    * Named model presets selectable via `--model <name>`.
@@ -139,6 +149,14 @@ export type SummarizeConfig = {
   models?: Record<string, ModelConfig>
   media?: {
     videoMode?: VideoMode
+  }
+  slides?: {
+    enabled?: boolean
+    ocr?: boolean
+    dir?: string
+    sceneThreshold?: number
+    max?: number
+    minDuration?: number
   }
   output?: {
     /**
@@ -668,12 +686,75 @@ export function loadSummarizeConfig({ env }: { env: Record<string, string | unde
               throw new Error(`Invalid config file ${path}: "cache.path" must be a string.`)
             })()
 
-    return enabled || maxMb || ttlDays || pathValue
+    const media = (() => {
+      const mediaValue = (value as Record<string, unknown>).media
+      if (typeof mediaValue === 'undefined') return undefined
+      if (!isRecord(mediaValue)) {
+        throw new Error(`Invalid config file ${path}: "cache.media" must be an object.`)
+      }
+      const mediaEnabled =
+        typeof mediaValue.enabled === 'boolean' ? (mediaValue.enabled as boolean) : undefined
+      const mediaMaxRaw = mediaValue.maxMb
+      const mediaMaxMb =
+        typeof mediaMaxRaw === 'number' && Number.isFinite(mediaMaxRaw) && mediaMaxRaw > 0
+          ? mediaMaxRaw
+          : typeof mediaMaxRaw === 'undefined'
+            ? undefined
+            : (() => {
+                throw new Error(
+                  `Invalid config file ${path}: "cache.media.maxMb" must be a number.`
+                )
+              })()
+      const mediaTtlRaw = mediaValue.ttlDays
+      const mediaTtlDays =
+        typeof mediaTtlRaw === 'number' && Number.isFinite(mediaTtlRaw) && mediaTtlRaw > 0
+          ? mediaTtlRaw
+          : typeof mediaTtlRaw === 'undefined'
+            ? undefined
+            : (() => {
+                throw new Error(
+                  `Invalid config file ${path}: "cache.media.ttlDays" must be a number.`
+                )
+              })()
+      const mediaPath =
+        typeof mediaValue.path === 'string' && mediaValue.path.trim().length > 0
+          ? mediaValue.path.trim()
+          : typeof mediaValue.path === 'undefined'
+            ? undefined
+            : (() => {
+                throw new Error(`Invalid config file ${path}: "cache.media.path" must be a string.`)
+              })()
+      const verifyRaw =
+        typeof mediaValue.verify === 'string' ? mediaValue.verify.trim().toLowerCase() : ''
+      const verify =
+        verifyRaw === 'none' || verifyRaw === 'size' || verifyRaw === 'hash'
+          ? (verifyRaw as MediaCacheVerifyMode)
+          : verifyRaw.length > 0
+            ? (() => {
+                throw new Error(
+                  `Invalid config file ${path}: "cache.media.verify" must be one of "none", "size", "hash".`
+                )
+              })()
+            : undefined
+
+      return mediaEnabled || mediaMaxMb || mediaTtlDays || mediaPath || typeof verify === 'string'
+        ? {
+            ...(typeof mediaEnabled === 'boolean' ? { enabled: mediaEnabled } : {}),
+            ...(typeof mediaMaxMb === 'number' ? { maxMb: mediaMaxMb } : {}),
+            ...(typeof mediaTtlDays === 'number' ? { ttlDays: mediaTtlDays } : {}),
+            ...(typeof mediaPath === 'string' ? { path: mediaPath } : {}),
+            ...(typeof verify === 'string' ? { verify } : {}),
+          }
+        : undefined
+    })()
+
+    return enabled || maxMb || ttlDays || pathValue || media
       ? {
           ...(typeof enabled === 'boolean' ? { enabled } : {}),
           ...(typeof maxMb === 'number' ? { maxMb } : {}),
           ...(typeof ttlDays === 'number' ? { ttlDays } : {}),
           ...(typeof pathValue === 'string' ? { path: pathValue } : {}),
+          ...(media ? { media } : {}),
         }
       : undefined
   })()
@@ -688,6 +769,71 @@ export function loadSummarizeConfig({ env }: { env: Record<string, string | unde
         ? (value.videoMode as VideoMode)
         : undefined
     return videoMode ? { videoMode } : undefined
+  })()
+
+  const slides = (() => {
+    const value = (parsed as Record<string, unknown>).slides
+    if (typeof value === 'undefined') return undefined
+    if (!isRecord(value)) {
+      throw new Error(`Invalid config file ${path}: "slides" must be an object.`)
+    }
+    const enabled = typeof value.enabled === 'boolean' ? value.enabled : undefined
+    const ocr = typeof value.ocr === 'boolean' ? value.ocr : undefined
+    const dir =
+      typeof value.dir === 'string' && value.dir.trim().length > 0
+        ? value.dir.trim()
+        : typeof value.dir === 'undefined'
+          ? undefined
+          : (() => {
+              throw new Error(`Invalid config file ${path}: "slides.dir" must be a string.`)
+            })()
+    const sceneRaw = value.sceneThreshold
+    const sceneThreshold =
+      typeof sceneRaw === 'number' && Number.isFinite(sceneRaw) && sceneRaw >= 0.1 && sceneRaw <= 1
+        ? sceneRaw
+        : typeof sceneRaw === 'undefined'
+          ? undefined
+          : (() => {
+              throw new Error(
+                `Invalid config file ${path}: "slides.sceneThreshold" must be a number between 0.1 and 1.0.`
+              )
+            })()
+    const maxRaw = value.max
+    const max =
+      typeof maxRaw === 'number' &&
+      Number.isFinite(maxRaw) &&
+      Number.isInteger(maxRaw) &&
+      maxRaw > 0
+        ? maxRaw
+        : typeof maxRaw === 'undefined'
+          ? undefined
+          : (() => {
+              throw new Error(`Invalid config file ${path}: "slides.max" must be an integer.`)
+            })()
+    const minRaw = value.minDuration
+    const minDuration =
+      typeof minRaw === 'number' && Number.isFinite(minRaw) && minRaw >= 0
+        ? minRaw
+        : typeof minRaw === 'undefined'
+          ? undefined
+          : (() => {
+              throw new Error(`Invalid config file ${path}: "slides.minDuration" must be a number.`)
+            })()
+    return enabled ||
+      typeof ocr === 'boolean' ||
+      dir ||
+      typeof sceneThreshold === 'number' ||
+      typeof max === 'number' ||
+      typeof minDuration === 'number'
+      ? {
+          ...(typeof enabled === 'boolean' ? { enabled } : {}),
+          ...(typeof ocr === 'boolean' ? { ocr } : {}),
+          ...(typeof dir === 'string' ? { dir } : {}),
+          ...(typeof sceneThreshold === 'number' ? { sceneThreshold } : {}),
+          ...(typeof max === 'number' ? { max } : {}),
+          ...(typeof minDuration === 'number' ? { minDuration } : {}),
+        }
+      : undefined
   })()
 
   const cli = (() => {
@@ -862,6 +1008,7 @@ export function loadSummarizeConfig({ env }: { env: Record<string, string | unde
       ...(cache ? { cache } : {}),
       ...(models ? { models } : {}),
       ...(media ? { media } : {}),
+      ...(slides ? { slides } : {}),
       ...(output ? { output } : {}),
       ...(ui ? { ui } : {}),
       ...(cli ? { cli } : {}),

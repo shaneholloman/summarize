@@ -114,6 +114,7 @@ export const resolveTranscriptForLink = async (
     ytDlpPath: deps.ytDlpPath,
     falApiKey: deps.falApiKey,
     openaiApiKey: deps.openaiApiKey,
+    mediaCache: deps.mediaCache ?? null,
     resolveTwitterCookies: deps.resolveTwitterCookies ?? null,
     onProgress: deps.onProgress ?? null,
     youtubeTranscriptMode: youtubeTranscriptMode ?? 'auto',

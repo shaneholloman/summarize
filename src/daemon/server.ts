@@ -10,6 +10,7 @@ import { refreshFree } from '../refresh-free.js'
 import { createCacheStateFromConfig, refreshCacheStoreIfMissing } from '../run/cache-state.js'
 import { resolveExecutableInPath } from '../run/env.js'
 import { formatModelLabelForDisplay } from '../run/finish-line.js'
+import { createMediaCacheFromConfig } from '../run/media-cache-state.js'
 import { resolveRunOverrides } from '../run/run-settings.js'
 import { encodeSseEvent, type SseEvent, type SseSlidesData } from '../shared/sse-events.js'
 import type { SlideExtractionResult, SlideSettings } from '../slides/index.js'
@@ -470,6 +471,11 @@ export async function runDaemonServer({
     noCacheFlag: false,
     transcriptNamespace: 'yt:auto',
   })
+  const mediaCache = await createMediaCacheFromConfig({
+    envForRun: env,
+    config: summarizeConfig,
+    noMediaCacheFlag: false,
+  })
 
   const sessions = new Map<string, Session>()
   const refreshSessions = new Map<string, Session>()
@@ -716,6 +722,7 @@ export async function runDaemonServer({
               fetchImpl,
               input: { url: pageUrl, title, maxCharacters },
               cache: requestCache,
+              mediaCache,
               overrides,
               format,
               slides: slidesSettings,
@@ -927,6 +934,7 @@ export async function runDaemonServer({
                     input: { url: pageUrl, title, maxCharacters },
                     sink,
                     cache: requestCache,
+                    mediaCache,
                     overrides,
                     slides: slidesSettings,
                     hooks: {
@@ -1063,6 +1071,7 @@ export async function runDaemonServer({
                     input: { url: pageUrl, title, text: textContent, truncated },
                     sink,
                     cache: requestCache,
+                    mediaCache,
                     overrides,
                   })
             }

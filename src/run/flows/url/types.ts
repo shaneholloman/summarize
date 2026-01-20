@@ -1,6 +1,10 @@
 import type { CacheState } from '../../../cache.js'
 import type { SummarizeConfig } from '../../../config.js'
-import type { ExtractedLinkContent, LinkPreviewProgressEvent } from '../../../content/index.js'
+import type {
+  ExtractedLinkContent,
+  LinkPreviewProgressEvent,
+  MediaCache,
+} from '../../../content/index.js'
 import type { LlmCall, RunMetricsReport } from '../../../costs.js'
 import type { StreamMode } from '../../../flags.js'
 import type { OutputLanguage } from '../../../language.js'
@@ -145,5 +149,6 @@ export type UrlFlowContext = {
   flags: UrlFlowFlags
   model: UrlFlowModel
   cache: CacheState
+  mediaCache: MediaCache | null
   hooks: UrlFlowHooks
 }

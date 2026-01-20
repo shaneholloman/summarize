@@ -102,10 +102,23 @@ Configure the on-disk SQLite cache (extracted content, transcripts, summaries).
     "enabled": true,
     "maxMb": 512,
     "ttlDays": 30,
-    "path": "~/.summarize/cache.sqlite"
+    "path": "~/.summarize/cache.sqlite",
+    "media": {
+      "enabled": true,
+      "maxMb": 2048,
+      "ttlDays": 7,
+      "path": "~/.summarize/cache/media",
+      "verify": "size"
+    }
   }
 }
 ```
+
+Notes:
+
+- `cache.media` controls the **media file** cache (yt-dlp downloads).
+- `--no-cache` bypasses only the SQLite cache; use `--no-media-cache` for media.
+- `verify`: `size` (default), `hash`, or `none`.
 
 ## UI theme
 
@@ -114,6 +127,23 @@ Set a default CLI theme:
 ```json
 {
   "ui": { "theme": "moss" }
+}
+```
+
+## Slides defaults
+
+Enable slides by default and tune extraction parameters:
+
+```json
+{
+  "slides": {
+    "enabled": true,
+    "ocr": false,
+    "dir": "slides",
+    "sceneThreshold": 0.3,
+    "max": 20,
+    "minDuration": 2
+  }
 }
 ```
 

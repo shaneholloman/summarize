@@ -52,6 +52,7 @@
 - Transcription: add auto transcriber selection (default) with ONNX-first when configured + `summarize transcriber setup`.
 - Slides: cap auto slide targets at 20 by default for long videos.
 - CLI: add themed output (24-bit ANSI), `--theme`, and config/env defaults for a consistent color scheme.
+- Cache: add media download caching with TTL/size caps + optional verification, plus `--no-media-cache`.
 
 ### Docs
 

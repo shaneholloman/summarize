@@ -217,6 +217,7 @@ export const fetchTranscript = async (
       env: options.env,
       openaiApiKey: options.openaiApiKey,
       falApiKey: options.falApiKey,
+      mediaCache: options.mediaCache ?? null,
       url,
       onProgress: progress,
       mediaKind: 'video',

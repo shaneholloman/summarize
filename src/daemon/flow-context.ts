@@ -2,7 +2,11 @@ import { execFile } from 'node:child_process'
 import { Writable } from 'node:stream'
 
 import type { CacheState } from '../cache.js'
-import type { ExtractedLinkContent, LinkPreviewProgressEvent } from '../content/index.js'
+import type {
+  ExtractedLinkContent,
+  LinkPreviewProgressEvent,
+  MediaCache,
+} from '../content/index.js'
 import type { ExecFileFn } from '../markitdown.js'
 import type { FixedModelSpec } from '../model-spec.js'
 import type { AssetSummaryContext, SummarizeAssetArgs } from '../run/flows/asset/summary.js'
@@ -41,6 +45,7 @@ export type DaemonUrlFlowContextArgs = {
   env: Record<string, string | undefined>
   fetchImpl: typeof fetch
   cache: CacheState
+  mediaCache?: MediaCache | null
   modelOverride: string | null
   promptOverride: string | null
   lengthRaw: unknown
@@ -82,6 +87,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     env,
     fetchImpl,
     cache,
+    mediaCache = null,
     modelOverride,
     promptOverride,
     lengthRaw,
@@ -295,6 +301,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     estimateCostUsd: metrics.estimateCostUsd,
     llmCalls: metrics.llmCalls,
     cache,
+    mediaCache,
     apiStatus: {
       xaiApiKey,
       apiKey,
@@ -391,6 +398,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
       llmCalls: metrics.llmCalls,
     },
     cache,
+    mediaCache,
     hooks: {
       onModelChosen: hooks?.onModelChosen ?? null,
       onExtracted: hooks?.onExtracted ?? null,

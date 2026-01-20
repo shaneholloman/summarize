@@ -1,5 +1,5 @@
 import type { CacheState } from '../cache.js'
-import { type ExtractedLinkContent, isYouTubeUrl } from '../content/index.js'
+import { type ExtractedLinkContent, isYouTubeUrl, type MediaCache } from '../content/index.js'
 import type { RunMetricsReport } from '../costs.js'
 import { buildFinishLineVariants, buildLengthPartsForFinishLine } from '../run/finish-line.js'
 import { deriveExtractionUi } from '../run/flows/url/extract.js'
@@ -150,6 +150,7 @@ export async function streamSummaryForVisiblePage({
   format,
   sink,
   cache,
+  mediaCache,
   overrides,
 }: {
   env: Record<string, string | undefined>
@@ -162,6 +163,7 @@ export async function streamSummaryForVisiblePage({
   format?: 'text' | 'markdown'
   sink: StreamSink
   cache: CacheState
+  mediaCache: MediaCache | null
   overrides: RunOverrides
 }): Promise<{ usedModel: string; metrics: VisiblePageMetrics }> {
   const startedAt = Date.now()
@@ -174,6 +176,7 @@ export async function streamSummaryForVisiblePage({
     env,
     fetchImpl,
     cache,
+    mediaCache,
     modelOverride,
     promptOverride,
     lengthRaw,
@@ -301,6 +304,7 @@ export async function streamSummaryForUrl({
   format,
   sink,
   cache,
+  mediaCache,
   overrides,
   slides,
   hooks,
@@ -315,6 +319,7 @@ export async function streamSummaryForUrl({
   format?: 'text' | 'markdown'
   sink: StreamSink
   cache: CacheState
+  mediaCache: MediaCache | null
   overrides: RunOverrides
   slides?: SlideSettings | null
   hooks?: {
@@ -345,6 +350,7 @@ export async function streamSummaryForUrl({
     env,
     fetchImpl,
     cache,
+    mediaCache,
     modelOverride,
     promptOverride,
     lengthRaw,
@@ -428,6 +434,7 @@ export async function extractContentForUrl({
   fetchImpl,
   input,
   cache,
+  mediaCache,
   overrides,
   format,
   slides,
@@ -437,6 +444,7 @@ export async function extractContentForUrl({
   fetchImpl: typeof fetch
   input: UrlModeInput
   cache: CacheState
+  mediaCache: MediaCache | null
   overrides: RunOverrides
   format?: 'text' | 'markdown'
   slides?: SlideSettings | null
@@ -451,6 +459,7 @@ export async function extractContentForUrl({
     env,
     fetchImpl,
     cache,
+    mediaCache,
     modelOverride: null,
     promptOverride: null,
     lengthRaw: '',

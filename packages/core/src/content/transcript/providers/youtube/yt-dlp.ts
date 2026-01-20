@@ -8,6 +8,7 @@ import {
   type TranscriptionProvider,
   transcribeMediaFileWithWhisper,
 } from '../../../../transcription/whisper.js'
+import type { MediaCache } from '../../../cache/types.js'
 import type { LinkPreviewProgressEvent } from '../../../link-preview/deps.js'
 import { ProgressKind } from '../../../link-preview/deps.js'
 import { resolveTranscriptionStartInfo } from '../transcription-start.js'
@@ -33,6 +34,7 @@ type YtDlpRequest = {
   onProgress?: ((event: LinkPreviewProgressEvent) => void) | null
   service?: 'youtube' | 'podcast' | 'generic'
   mediaKind?: 'video' | 'audio' | null
+  mediaCache?: MediaCache | null
   extraArgs?: string[]
 }
 
@@ -50,6 +52,7 @@ export const fetchTranscriptWithYtDlp = async ({
   onProgress,
   service = 'youtube',
   mediaKind = null,
+  mediaCache = null,
   extraArgs,
 }: YtDlpRequest): Promise<YtDlpTranscriptResult> => {
   const notes: string[] = []
@@ -83,46 +86,83 @@ export const fetchTranscriptWithYtDlp = async ({
   const progress = typeof onProgress === 'function' ? onProgress : null
   const providerHint = startInfo.providerHint
   const modelId = startInfo.modelId
+  const cachedMedia = mediaCache ? await mediaCache.get({ url }) : null
 
   const outputFile = join(tmpdir(), `summarize-${randomUUID()}.mp3`)
+  let filePath = cachedMedia?.filePath ?? outputFile
+  let shouldCleanup = !cachedMedia?.filePath
   try {
-    progress?.({
-      kind: ProgressKind.TranscriptMediaDownloadStart,
-      url,
-      service,
-      mediaUrl: url,
-      mediaKind,
-      totalBytes: null,
-    })
-    await downloadAudio(
-      ytDlpPath,
-      url,
-      outputFile,
-      extraArgs,
-      progress
-        ? (downloadedBytes, totalBytes) => {
-            progress({
-              kind: ProgressKind.TranscriptMediaDownloadProgress,
-              url,
-              service,
-              downloadedBytes,
-              totalBytes,
-              mediaKind,
-            })
-          }
-        : null
-    )
-    const stat = await fs.stat(outputFile)
-    progress?.({
-      kind: ProgressKind.TranscriptMediaDownloadDone,
-      url,
-      service,
-      downloadedBytes: stat.size,
-      totalBytes: null,
-      mediaKind,
-    })
+    if (cachedMedia?.filePath) {
+      progress?.({
+        kind: ProgressKind.TranscriptMediaDownloadStart,
+        url,
+        service,
+        mediaUrl: url,
+        mediaKind,
+        totalBytes: cachedMedia.sizeBytes ?? null,
+      })
+      progress?.({
+        kind: ProgressKind.TranscriptMediaDownloadDone,
+        url,
+        service,
+        downloadedBytes: cachedMedia.sizeBytes ?? 0,
+        totalBytes: cachedMedia.sizeBytes ?? null,
+        mediaKind,
+      })
+      notes.push('media cache hit')
+    } else {
+      progress?.({
+        kind: ProgressKind.TranscriptMediaDownloadStart,
+        url,
+        service,
+        mediaUrl: url,
+        mediaKind,
+        totalBytes: null,
+      })
+      await downloadAudio(
+        ytDlpPath,
+        url,
+        outputFile,
+        extraArgs,
+        progress
+          ? (downloadedBytes, totalBytes) => {
+              progress({
+                kind: ProgressKind.TranscriptMediaDownloadProgress,
+                url,
+                service,
+                downloadedBytes,
+                totalBytes,
+                mediaKind,
+              })
+            }
+          : null
+      )
+      const stat = await fs.stat(outputFile)
+      progress?.({
+        kind: ProgressKind.TranscriptMediaDownloadDone,
+        url,
+        service,
+        downloadedBytes: stat.size,
+        totalBytes: null,
+        mediaKind,
+      })
 
-    const probedDurationSeconds = await probeMediaDurationSecondsWithFfprobe(outputFile)
+      if (mediaCache) {
+        const stored = await mediaCache.put({
+          url,
+          filePath: outputFile,
+          mediaType: 'audio/mpeg',
+          filename: 'audio.mp3',
+        })
+        if (stored?.filePath) {
+          filePath = stored.filePath
+          shouldCleanup = false
+          notes.push('media cached')
+        }
+      }
+    }
+
+    const probedDurationSeconds = await probeMediaDurationSecondsWithFfprobe(filePath)
     progress?.({
       kind: ProgressKind.TranscriptWhisperStart,
       url,
@@ -133,7 +173,7 @@ export const fetchTranscriptWithYtDlp = async ({
       parts: null,
     })
     const result = await transcribeMediaFileWithWhisper({
-      filePath: outputFile,
+      filePath,
       mediaType: 'audio/mpeg',
       filename: 'audio.mp3',
       openaiApiKey,
@@ -162,7 +202,9 @@ export const fetchTranscriptWithYtDlp = async ({
       notes,
     }
   } finally {
-    await fs.unlink(outputFile).catch(() => {})
+    if (shouldCleanup) {
+      await fs.unlink(filePath).catch(() => {})
+    }
   }
 }
 

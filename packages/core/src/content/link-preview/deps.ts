@@ -1,4 +1,4 @@
-import type { TranscriptCache } from '../cache/types.js'
+import type { MediaCache, TranscriptCache } from '../cache/types.js'
 import type { CacheMode, TranscriptSource } from './types.js'
 
 // Enum-like constants for progress kinds (keeps call sites typo-resistant without TS `enum` runtime quirks).
@@ -177,6 +177,7 @@ export interface LinkPreviewDeps {
   openaiApiKey: string | null
   convertHtmlToMarkdown: ConvertHtmlToMarkdown | null
   transcriptCache: TranscriptCache | null
+  mediaCache?: MediaCache | null
   readTweetWithBird?: ReadTweetWithBird | null
   resolveTwitterCookies?: ResolveTwitterCookies | null
   onProgress?: ((event: LinkPreviewProgressEvent) => void) | null

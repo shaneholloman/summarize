@@ -168,6 +168,7 @@ export async function runUrlFlow({
     enabled: flags.progressEnabled,
     spinner,
     oscProgress,
+    theme,
   })
 
   const cacheStore = cacheState.mode === 'default' ? cacheState.store : null
@@ -192,6 +193,7 @@ export async function runUrlFlow({
     },
     fetch: io.fetch,
     transcriptCache,
+    mediaCache: ctx.mediaCache ?? null,
     onProgress:
       websiteProgress || hooks.onLinkPreviewProgress
         ? (event) => {

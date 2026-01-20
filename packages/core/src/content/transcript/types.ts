@@ -1,3 +1,4 @@
+import type { MediaCache } from '../cache/types.js'
 import type { MediaTranscriptMode, YoutubeTranscriptMode } from '../link-preview/content/types.js'
 import type {
   LinkPreviewProgressEvent,
@@ -26,6 +27,7 @@ export interface ProviderFetchOptions {
   ytDlpPath: string | null
   falApiKey: string | null
   openaiApiKey: string | null
+  mediaCache?: MediaCache | null
   resolveTwitterCookies?: ResolveTwitterCookies | null
   onProgress?: ((event: LinkPreviewProgressEvent) => void) | null
 }

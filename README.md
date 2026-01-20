@@ -428,11 +428,25 @@ Also supported:
 - `model: { "mode": "auto" }` (automatic model selection + fallback; see [docs/model-auto.md](docs/model-auto.md))
 - `model.rules` (customize candidates / ordering)
 - `models` (define presets selectable via `--model <preset>`)
+- `cache.media` (media download cache: TTL 7 days, 2048 MB cap by default; `--no-media-cache` disables)
 - `media.videoMode: "auto"|"transcript"|"understand"`
+- `slides.enabled` / `slides.max` / `slides.ocr` / `slides.dir` (defaults for `--slides`)
 - `ui.theme: "aurora"|"ember"|"moss"|"mono"`
 - `openai.useChatCompletions: true` (force OpenAI-compatible chat completions)
 
 Note: the config is parsed leniently (JSON5), but comments are not allowed. Unknown keys are ignored.
+
+Media cache defaults:
+
+```json
+{
+  "cache": {
+    "media": { "enabled": true, "ttlDays": 7, "maxMb": 2048, "verify": "size" }
+  }
+}
+```
+
+Note: `--no-cache` bypasses the SQLite cache only. Use `--no-media-cache` to skip media files.
 
 Precedence:
 

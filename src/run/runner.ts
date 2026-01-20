@@ -33,6 +33,7 @@ import { outputExtractedAsset } from './flows/asset/output.js'
 import { summarizeAsset as summarizeAssetFlow } from './flows/asset/summary.js'
 import { runUrlFlow } from './flows/url/flow.js'
 import { attachRichHelp, buildProgram } from './help.js'
+import { createMediaCacheFromConfig } from './media-cache-state.js'
 import { createProgressGate } from './progress.js'
 import { resolveRunContextState } from './run-context.js'
 import { resolveRunInput } from './run-input.js'
@@ -230,22 +231,6 @@ export async function runCli(
   const inputTarget = inputResolution.inputTarget
   const url = inputResolution.url
 
-  const slidesSettings = resolveSlideSettings({
-    slides: program.opts().slides,
-    slidesOcr: program.opts().slidesOcr,
-    slidesDir: program.opts().slidesDir,
-    slidesSceneThreshold: program.opts().slidesSceneThreshold,
-    slidesSceneThresholdExplicit: normalizedArgv.some(
-      (arg) => arg === '--slides-scene-threshold' || arg.startsWith('--slides-scene-threshold=')
-    ),
-    slidesMax: program.opts().slidesMax,
-    slidesMinDuration: program.opts().slidesMinDuration,
-    cwd: process.cwd(),
-  })
-  if (slidesSettings && inputTarget.kind !== 'url') {
-    throw new Error('--slides is only supported for URL inputs')
-  }
-
   const runStartedAtMs = Date.now()
 
   const videoModeExplicitlySet = normalizedArgv.some(
@@ -262,11 +247,10 @@ export async function runCli(
       arg.startsWith('--lang=')
   )
   const noCacheFlag = program.opts().cache === false
+  const noMediaCacheFlag = program.opts().mediaCache === false
   const extractMode = Boolean(program.opts().extract) || Boolean(program.opts().extractOnly)
   const json = Boolean(program.opts().json)
   const forceSummary = Boolean(program.opts().forceSummary)
-  const transcriptTimestamps =
-    Boolean(program.opts().timestamps) || Boolean(program.opts().slides || program.opts().slidesOcr)
   const slidesDebug = Boolean(program.opts().slidesDebug)
   const streamMode = parseStreamMode(program.opts().stream as string)
   const plain = Boolean(program.opts().plain)
@@ -437,6 +421,54 @@ export async function runCli(
   if (!promptOverride && typeof config?.prompt === 'string' && config.prompt.trim().length > 0) {
     promptOverride = config.prompt.trim()
   }
+
+  const slidesExplicitlySet = normalizedArgv.some(
+    (arg) => arg === '--slides' || arg.startsWith('--slides=')
+  )
+  const slidesOcrExplicitlySet = normalizedArgv.some(
+    (arg) => arg === '--slides-ocr' || arg.startsWith('--slides-ocr=')
+  )
+  const slidesDirExplicitlySet = normalizedArgv.some(
+    (arg) => arg === '--slides-dir' || arg.startsWith('--slides-dir=')
+  )
+  const slidesSceneThresholdExplicitlySet = normalizedArgv.some(
+    (arg) => arg === '--slides-scene-threshold' || arg.startsWith('--slides-scene-threshold=')
+  )
+  const slidesMaxExplicitlySet = normalizedArgv.some(
+    (arg) => arg === '--slides-max' || arg.startsWith('--slides-max=')
+  )
+  const slidesMinDurationExplicitlySet = normalizedArgv.some(
+    (arg) => arg === '--slides-min-duration' || arg.startsWith('--slides-min-duration=')
+  )
+  const slidesConfig = config?.slides
+  const slidesSettings = resolveSlideSettings({
+    slides: slidesExplicitlySet
+      ? program.opts().slides
+      : (slidesConfig?.enabled ?? program.opts().slides),
+    slidesOcr: slidesOcrExplicitlySet
+      ? program.opts().slidesOcr
+      : (slidesConfig?.ocr ?? program.opts().slidesOcr),
+    slidesDir: slidesDirExplicitlySet
+      ? program.opts().slidesDir
+      : (slidesConfig?.dir ?? program.opts().slidesDir),
+    slidesSceneThreshold: slidesSceneThresholdExplicitlySet
+      ? program.opts().slidesSceneThreshold
+      : (slidesConfig?.sceneThreshold ?? program.opts().slidesSceneThreshold),
+    slidesSceneThresholdExplicit:
+      slidesSceneThresholdExplicitlySet || typeof slidesConfig?.sceneThreshold === 'number',
+    slidesMax: slidesMaxExplicitlySet
+      ? program.opts().slidesMax
+      : (slidesConfig?.max ?? program.opts().slidesMax),
+    slidesMinDuration: slidesMinDurationExplicitlySet
+      ? program.opts().slidesMinDuration
+      : (slidesConfig?.minDuration ?? program.opts().slidesMinDuration),
+    cwd: process.cwd(),
+  })
+  if (slidesSettings && inputTarget.kind !== 'url') {
+    throw new Error('--slides is only supported for URL inputs')
+  }
+  const transcriptTimestamps = Boolean(program.opts().timestamps) || Boolean(slidesSettings)
+
   const lengthInstruction =
     promptOverride && lengthExplicitlySet && lengthArg.kind === 'chars'
       ? `Output is ${lengthArg.maxCharacters.toLocaleString()} characters.`
@@ -452,6 +484,11 @@ export async function runCli(
     config,
     noCacheFlag,
     transcriptNamespace,
+  })
+  const mediaCache = await createMediaCacheFromConfig({
+    envForRun,
+    config,
+    noMediaCacheFlag,
   })
 
   try {
@@ -622,6 +659,7 @@ export async function runCli(
       estimateCostUsd,
       llmCalls,
       cache: cacheState,
+      mediaCache,
       apiStatus: {
         xaiApiKey,
         apiKey,
@@ -811,6 +849,7 @@ export async function runCli(
         llmCalls,
       },
       cache: cacheState,
+      mediaCache,
       hooks: {
         onModelChosen: null,
         onExtracted: null,

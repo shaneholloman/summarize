@@ -189,6 +189,7 @@ See: https://github.com/openai/whisper for setup details`)
     },
     fetch: ctx.trackedFetch,
     transcriptCache,
+    mediaCache: ctx.mediaCache ?? null,
     onProgress: (_event) => {
       // Could update progress here if needed
       // For now, silent transcription

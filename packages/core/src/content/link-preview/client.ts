@@ -1,4 +1,4 @@
-import type { TranscriptCache } from '../cache/types.js'
+import type { MediaCache, TranscriptCache } from '../cache/types.js'
 import { fetchLinkContent } from './content/index.js'
 import type { ExtractedLinkContent, FetchLinkContentOptions } from './content/types.js'
 import type {
@@ -25,6 +25,7 @@ export interface LinkPreviewClientOptions {
   openaiApiKey?: string | null
   convertHtmlToMarkdown?: ConvertHtmlToMarkdown | null
   transcriptCache?: TranscriptCache | null
+  mediaCache?: MediaCache | null
   readTweetWithBird?: LinkPreviewDeps['readTweetWithBird']
   resolveTwitterCookies?: ResolveTwitterCookies | null
   onProgress?: ((event: LinkPreviewProgressEvent) => void) | null
@@ -42,6 +43,7 @@ export function createLinkPreviewClient(options: LinkPreviewClientOptions = {}):
   const openaiApiKey = typeof options.openaiApiKey === 'string' ? options.openaiApiKey : null
   const convertHtmlToMarkdown: ConvertHtmlToMarkdown | null = options.convertHtmlToMarkdown ?? null
   const transcriptCache: TranscriptCache | null = options.transcriptCache ?? null
+  const mediaCache: MediaCache | null = options.mediaCache ?? null
   const readTweetWithBird =
     typeof options.readTweetWithBird === 'function' ? options.readTweetWithBird : null
   const resolveTwitterCookies =
@@ -60,6 +62,7 @@ export function createLinkPreviewClient(options: LinkPreviewClientOptions = {}):
         openaiApiKey,
         convertHtmlToMarkdown,
         transcriptCache,
+        mediaCache,
         readTweetWithBird,
         resolveTwitterCookies,
         onProgress,

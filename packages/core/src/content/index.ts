@@ -1,4 +1,6 @@
 export type {
+  MediaCache,
+  MediaCacheEntry,
   TranscriptCache,
   TranscriptCacheGetResult,
   TranscriptCacheSetArgs,
