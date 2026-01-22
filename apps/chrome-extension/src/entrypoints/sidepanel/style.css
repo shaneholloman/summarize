@@ -1471,10 +1471,24 @@ header.isError .progressFill {
   color: var(--muted);
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   background: color-mix(in srgb, var(--panel) 60%, transparent);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .slideNotice.hidden {
   display: none;
+}
+
+.slideNotice__message {
+  flex: 1;
+}
+
+.slideNotice__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 main {

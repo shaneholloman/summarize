@@ -144,6 +144,8 @@ const errorMessageEl = byId<HTMLParagraphElement>('errorMessage')
 const errorRetryBtn = byId<HTMLButtonElement>('errorRetry')
 const errorLogsBtn = byId<HTMLButtonElement>('errorLogs')
 const slideNoticeEl = byId<HTMLDivElement>('slideNotice')
+const slideNoticeMessageEl = byId<HTMLSpanElement>('slideNoticeMessage')
+const slideNoticeRetryBtn = byId<HTMLButtonElement>('slideNoticeRetry')
 const renderEl = byId<HTMLElement>('render')
 const renderSlidesHostEl = document.createElement('div')
 renderSlidesHostEl.className = 'render__slidesHost'
@@ -325,15 +327,17 @@ function hideAutomationNotice() {
   automationNoticeEl.classList.add('hidden')
 }
 
-function showSlideNotice(message: string) {
-  slideNoticeEl.textContent = message
+function showSlideNotice(message: string, opts?: { allowRetry?: boolean }) {
+  slideNoticeMessageEl.textContent = message
+  slideNoticeRetryBtn.hidden = !opts?.allowRetry
   slideNoticeEl.classList.remove('hidden')
   headerController.updateHeaderOffset()
 }
 
 function hideSlideNotice() {
   slideNoticeEl.classList.add('hidden')
-  slideNoticeEl.textContent = ''
+  slideNoticeMessageEl.textContent = ''
+  slideNoticeRetryBtn.hidden = true
   headerController.updateHeaderOffset()
 }
 
@@ -655,6 +659,19 @@ function handleSlidesTextModeChange(next: SlideTextMode) {
   refreshSummarizeControl()
 }
 
+function retrySlidesStream() {
+  if (!slidesEnabledValue) return
+  hideSlideNotice()
+  const runId = panelState.slidesRunId ?? panelState.runId
+  const targetUrl = panelState.currentSource?.url ?? activeTabUrl ?? null
+  if (runId) {
+    startSlidesStreamForRunId(runId)
+    startSlidesSummaryStreamForRunId(runId, targetUrl)
+    return
+  }
+  sendSummarize({ refresh: true })
+}
+
 function applySlidesLayout() {
   const isGallery = slidesLayoutValue === 'gallery'
   renderMarkdownHostEl.classList.remove('hidden')
@@ -805,6 +822,10 @@ const errorController = createErrorController({
   onPanelVisibilityChange: () => headerController.updateHeaderOffset(),
 })
 
+slideNoticeRetryBtn.addEventListener('click', () => {
+  retrySlidesStream()
+})
+
 const setPhase = (phase: PanelPhase, opts?: { error?: string | null }) => {
   panelState.phase = phase
   panelState.error = phase === 'error' ? (opts?.error ?? panelState.error) : null
@@ -820,6 +841,9 @@ const setPhase = (phase: PanelPhase, opts?: { error?: string | null }) => {
     if (phase !== 'streaming' && phase !== 'connecting') {
       setSlidesBusy(false)
     }
+  }
+  if (phase === 'connecting' || phase === 'streaming') {
+    headerController.armProgress()
   }
   if (phase !== 'connecting' && phase !== 'streaming') {
     headerController.stopProgress()
@@ -1629,6 +1653,7 @@ function applySlidesPayload(data: SseSlidesData) {
   if (panelState.summaryMarkdown) {
     renderInlineSlides(renderMarkdownHostEl, { fallback: true })
   }
+  hideSlideNotice()
   renderInlineSlides(chatMessagesEl)
   queueSlidesRender()
   panelCacheController.scheduleSync()
@@ -2978,7 +3003,12 @@ const slidesHydrator = createSlidesHydrator({
   },
   onError: (err) => {
     const message = friendlyFetchError(err, 'Slides stream failed')
-    showSlideNotice(message)
+    showSlideNotice(message, { allowRetry: true })
+    setSlidesBusy(false)
+    if (!isStreaming()) {
+      headerController.setStatus('')
+    }
+    void slidesHydrator.hydrateSnapshot('timeout')
     return message
   },
   onSnapshotError: (err) => {

@@ -27,7 +27,12 @@
       <div id="progress" class="progress" aria-hidden="true">
         <div id="progressFill" class="progressFill"></div>
       </div>
-      <div id="slideNotice" class="slideNotice hidden" role="status" aria-live="polite"></div>
+      <div id="slideNotice" class="slideNotice hidden" role="status" aria-live="polite">
+        <span id="slideNoticeMessage" class="slideNotice__message"></span>
+        <div class="slideNotice__actions">
+          <button id="slideNoticeRetry" type="button" class="ghost small">Try again</button>
+        </div>
+      </div>
       <div id="error" class="error hidden" role="status" aria-live="polite">
         <div class="error__content">
           <div class="error__title">Something went wrong</div>
