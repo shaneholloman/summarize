@@ -1178,6 +1178,8 @@ async function extractFramesAtTimestamps({
       '2',
       '-an',
       '-sn',
+      '-update',
+      '1',
       outputPath,
     ]
     await runProcess({
