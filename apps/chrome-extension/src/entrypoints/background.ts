@@ -812,22 +812,13 @@ export default defineBackground(() => {
       ? 'Extracting video + thumbnails…'
       : 'Extracting video transcript…'
     sendStatus(session, urlStatusLabel)
-    const res = await fetch('http://127.0.0.1:8787/v1/summarize', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${settings.token.trim()}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        url: tab.url,
-        mode: 'url',
-        extractOnly: true,
-        timestamps: true,
-        ...(wantsSlides ? { slides: true } : {}),
-        maxCharacters: null,
-      }),
-    })
-    const json = (await res.json()) as {
+    const extractTimeoutMs = wantsSlides ? 6 * 60_000 : 3 * 60_000
+    const extractController = new AbortController()
+    const extractTimeout = setTimeout(() => {
+      extractController.abort()
+    }, extractTimeoutMs)
+    let res!: Response
+    let json!: {
       ok: boolean
       extracted?: {
         content: string
@@ -856,6 +847,32 @@ export default defineBackground(() => {
       }
       slides?: SlidesPayload | null
       error?: string
+    }
+    try {
+      res = await fetch('http://127.0.0.1:8787/v1/summarize', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${settings.token.trim()}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: tab.url,
+          mode: 'url',
+          extractOnly: true,
+          timestamps: true,
+          ...(wantsSlides ? { slides: true } : {}),
+          maxCharacters: null,
+        }),
+        signal: extractController.signal,
+      })
+      json = (await res.json()) as typeof json
+    } catch (err) {
+      if (extractController.signal.aborted) {
+        throw new Error('Video extraction timed out. The daemon may be stuck.')
+      }
+      throw err
+    } finally {
+      clearTimeout(extractTimeout)
     }
     if (!res.ok || !json.ok || !json.extracted) {
       throw new Error(json.error || `${res.status} ${res.statusText}`)

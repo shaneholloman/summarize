@@ -5,7 +5,6 @@ import {
 } from '../../../../../src/shared/sse-events.js'
 import { mergeStreamingChunk } from '../../../../../src/shared/streaming-merge.js'
 import { parseSseStream, type SseMessage } from '../../lib/sse'
-import { splitStatusPercent } from '../../lib/status'
 import type { PanelPhase, RunStart } from './types'
 
 export type StreamController = {
@@ -206,12 +205,7 @@ export function createStreamController(options: StreamControllerOptions): Stream
             trimmed.startsWith('slides ') ||
             trimmed.startsWith('slide:')
           if (!streamedAnyNonWhitespace || allowDuringStreaming) {
-            if (allowDuringStreaming) {
-              const split = splitStatusPercent(raw)
-              onStatus(split.percent ? split.text || raw : raw)
-            } else {
-              onStatus(raw)
-            }
+            onStatus(raw)
           }
         } else if (event.event === 'metrics') {
           onMetrics?.(event.data.summary)
