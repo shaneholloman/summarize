@@ -4,12 +4,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { completeAgentResponse } from "../src/daemon/agent.js";
+import { runCliModel } from "../src/llm/cli.js";
 import * as modelAuto from "../src/model-auto.js";
 
 const { mockCompleteSimple, mockGetModel } = vi.hoisted(() => ({
   mockCompleteSimple: vi.fn(),
   mockGetModel: vi.fn(),
 }));
+
+vi.mock("../src/llm/cli.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/llm/cli.js")>();
+  return {
+    ...actual,
+    runCliModel: vi.fn(async () => ({ text: "cli agent", usage: null, costUsd: null })),
+  };
+});
 
 vi.mock("@mariozechner/pi-ai", () => {
   return {
@@ -54,6 +63,8 @@ const makeTempHome = () => mkdtempSync(join(tmpdir(), "summarize-daemon-agent-")
 beforeEach(() => {
   mockCompleteSimple.mockReset();
   mockGetModel.mockReset();
+  vi.mocked(runCliModel).mockReset();
+  vi.mocked(runCliModel).mockResolvedValue({ text: "cli agent", usage: null, costUsd: null });
   mockGetModel.mockImplementation((provider: string, modelId: string) =>
     makeModel(provider, modelId),
   );
@@ -200,6 +211,73 @@ describe("daemon/agent", () => {
 
       const options = mockCompleteSimple.mock.calls[0]?.[2] as { apiKey?: string };
       expect(options.apiKey).toBe("sk-openrouter-via-openai");
+    } finally {
+      autoSpy.mockRestore();
+    }
+  });
+
+  it("runs fixed CLI agent models through the CLI transport", async () => {
+    const home = makeTempHome();
+
+    const assistant = await completeAgentResponse({
+      env: { HOME: home },
+      pageUrl: "https://example.com",
+      pageTitle: "Example",
+      pageContent: "Hello world",
+      messages: [{ role: "user", content: "Hi" }],
+      modelOverride: "cli/codex/gpt-5.2",
+      tools: [],
+      automationEnabled: false,
+    });
+
+    expect(runCliModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        model: "gpt-5.2",
+        allowTools: false,
+      }),
+    );
+    const args = vi.mocked(runCliModel).mock.calls[0]?.[0] as { prompt: string };
+    expect(args.prompt).toContain("You are Summarize Chat, not Claude.");
+    expect(args.prompt).toContain("User: Hi");
+    expect(mockCompleteSimple).not.toHaveBeenCalled();
+    expect(assistant.content).toBe("cli agent");
+  });
+
+  it("falls back to CLI auto attempts when no API-key agent model is available", async () => {
+    const home = makeTempHome();
+    const autoSpy = vi.spyOn(modelAuto, "buildAutoModelAttempts").mockReturnValue([
+      {
+        transport: "cli",
+        userModelId: "cli/codex/gpt-5.2",
+        llmModelId: null,
+        openrouterProviders: null,
+        forceOpenRouter: false,
+        requiredEnv: "CLI_CODEX",
+        debug: "cli fallback",
+      },
+    ]);
+
+    try {
+      const assistant = await completeAgentResponse({
+        env: { HOME: home },
+        pageUrl: "https://example.com",
+        pageTitle: null,
+        pageContent: "Hello world",
+        messages: [{ role: "user", content: "Hi" }],
+        modelOverride: null,
+        tools: [],
+        automationEnabled: false,
+      });
+
+      expect(runCliModel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "codex",
+          model: "gpt-5.2",
+        }),
+      );
+      expect(mockCompleteSimple).not.toHaveBeenCalled();
+      expect(assistant.content).toBe("cli agent");
     } finally {
       autoSpy.mockRestore();
     }

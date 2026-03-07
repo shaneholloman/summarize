@@ -1,10 +1,19 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { streamChatResponse } from "../src/daemon/chat.js";
+import { runCliModel } from "../src/llm/cli.js";
 import { streamTextWithContext } from "../src/llm/generate-text.js";
 import { buildAutoModelAttempts } from "../src/model-auto.js";
+
+vi.mock("../src/llm/cli.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/llm/cli.js")>();
+  return {
+    ...actual,
+    runCliModel: vi.fn(async () => ({ text: "cli hello", usage: null, costUsd: null })),
+  };
+});
 
 vi.mock("../src/llm/generate-text.js", () => {
   return {
@@ -26,6 +35,13 @@ vi.mock("../src/model-auto.js", async (importOriginal) => {
     ...actual,
     buildAutoModelAttempts: vi.fn(),
   };
+});
+
+beforeEach(() => {
+  vi.mocked(streamTextWithContext).mockClear();
+  vi.mocked(buildAutoModelAttempts).mockReset();
+  vi.mocked(runCliModel).mockReset();
+  vi.mocked(runCliModel).mockResolvedValue({ text: "cli hello", usage: null, costUsd: null });
 });
 
 describe("daemon/chat", () => {
@@ -57,6 +73,45 @@ describe("daemon/chat", () => {
     expect(args.forceOpenRouter).toBe(false);
     expect(meta[0]?.model).toBe("openai/gpt-5-mini");
     expect(events.some((evt) => evt.event === "metrics")).toBe(true);
+  });
+
+  it("runs fixed CLI model overrides through the CLI transport", async () => {
+    const home = mkdtempSync(join(tmpdir(), "summarize-daemon-chat-cli-fixed-"));
+    const events: Array<{ event: string; data?: unknown }> = [];
+    const meta: Array<{ model?: string | null }> = [];
+
+    await streamChatResponse({
+      env: { HOME: home },
+      fetchImpl: fetch,
+      session: {
+        id: "s-cli-fixed",
+        lastMeta: { model: null, modelLabel: null, inputSummary: null, summaryFromCache: null },
+      },
+      pageUrl: "https://example.com",
+      pageTitle: "Example",
+      pageContent: "Hello world",
+      messages: [{ role: "user", content: "Hi" }],
+      modelOverride: "cli/codex/gpt-5.2",
+      pushToSession: (evt) => events.push(evt),
+      emitMeta: (patch) => meta.push(patch),
+    });
+
+    expect(runCliModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        model: "gpt-5.2",
+        allowTools: false,
+      }),
+    );
+    const args = vi.mocked(runCliModel).mock.calls[0]?.[0] as { prompt: string };
+    expect(args.prompt).toContain("You are Summarize Chat.");
+    expect(args.prompt).toContain("User: Hi");
+    expect(vi.mocked(streamTextWithContext).mock.calls.length).toBe(0);
+    expect(meta[0]?.model).toBe("cli/codex/gpt-5.2");
+    expect(events).toEqual([
+      { event: "content", data: "cli hello" },
+      { event: "metrics" },
+    ]);
   });
 
   it("routes openrouter overrides through openrouter transport", async () => {
@@ -170,5 +225,52 @@ describe("daemon/chat", () => {
     expect(args.modelId).toBe("openai/openai/gpt-5-mini");
     expect(args.forceOpenRouter).toBe(true);
     expect(meta[0]?.model).toBe("openrouter/openai/gpt-5-mini");
+  });
+
+  it("falls back to CLI auto attempts when no API-key model is available", async () => {
+    const home = mkdtempSync(join(tmpdir(), "summarize-daemon-chat-cli-auto-"));
+    const meta: Array<{ model?: string | null }> = [];
+    const events: Array<{ event: string; data?: unknown }> = [];
+
+    vi.mocked(buildAutoModelAttempts).mockReturnValue([
+      {
+        transport: "cli" as const,
+        userModelId: "cli/codex/gpt-5.2",
+        llmModelId: null,
+        openrouterProviders: null,
+        forceOpenRouter: false,
+        requiredEnv: "CLI_CODEX" as const,
+        debug: "cli fallback",
+      },
+    ]);
+
+    await streamChatResponse({
+      env: { HOME: home },
+      fetchImpl: fetch,
+      session: {
+        id: "s-cli-auto",
+        lastMeta: { model: null, modelLabel: null, inputSummary: null, summaryFromCache: null },
+      },
+      pageUrl: "https://example.com",
+      pageTitle: null,
+      pageContent: "Hello world",
+      messages: [{ role: "user", content: "Hi" }],
+      modelOverride: null,
+      pushToSession: (evt) => events.push(evt),
+      emitMeta: (patch) => meta.push(patch),
+    });
+
+    expect(runCliModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        model: "gpt-5.2",
+      }),
+    );
+    expect(vi.mocked(streamTextWithContext).mock.calls.length).toBe(0);
+    expect(meta[0]?.model).toBe("cli/codex/gpt-5.2");
+    expect(events).toEqual([
+      { event: "content", data: "cli hello" },
+      { event: "metrics" },
+    ]);
   });
 });
