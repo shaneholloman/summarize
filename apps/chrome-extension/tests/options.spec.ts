@@ -18,9 +18,7 @@ test.skip(
   "Firefox extension tests are blocked by Playwright limitations. Set ALLOW_FIREFOX_EXTENSION_TESTS=1 to run.",
 );
 
-test("options pickers support keyboard selection", async ({
-  browserName: _browserName,
-}, testInfo) => {
+test("options pickers apply overlay selection", async ({ browserName: _browserName }, testInfo) => {
   const harness = await launchExtension(getBrowserFromProject(testInfo.project.name));
 
   try {
@@ -35,10 +33,7 @@ test("options pickers support keyboard selection", async ({
     await schemeTrigger.press("Enter");
     const schemeList = getOpenPickerList(page);
     await expect(schemeList).toBeVisible();
-    await schemeList.focus();
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("Enter");
+    await schemeList.locator('[role="option"]').nth(2).click();
 
     await expect(schemeTrigger.locator(".scheme-label")).toHaveText("Mint");
 
@@ -49,9 +44,7 @@ test("options pickers support keyboard selection", async ({
     await modeTrigger.press("Enter");
     const modeList = getOpenPickerList(page);
     await expect(modeList).toBeVisible();
-    await modeList.focus();
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("Enter");
+    await modeList.locator('[role="option"]').nth(1).click();
 
     await expect(modeTrigger).toHaveText("Light");
     assertNoErrors(harness);

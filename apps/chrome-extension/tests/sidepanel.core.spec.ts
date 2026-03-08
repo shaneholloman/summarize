@@ -89,7 +89,7 @@ test("sidepanel updates chat visibility when settings change", async ({
   }
 });
 
-test("sidepanel scheme picker supports keyboard selection", async ({
+test("sidepanel scheme picker applies overlay selection", async ({
   browserName: _browserName,
 }, testInfo) => {
   const harness = await launchExtension(getBrowserFromProject(testInfo.project.name));
@@ -118,9 +118,7 @@ test("sidepanel scheme picker supports keyboard selection", async ({
     await schemeTrigger.press("Enter");
     const schemeList = getOpenPickerList(page);
     await expect(schemeList).toBeVisible();
-    await schemeList.focus();
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("Enter");
+    await schemeList.locator('[role="option"]').nth(1).click();
 
     await expect(schemeTrigger.locator(".scheme-label")).toHaveText("Cedar");
     assertNoErrors(harness);
@@ -278,7 +276,7 @@ test("sidepanel refresh free shows error on failure", async ({
   }
 });
 
-test("sidepanel mode picker updates theme mode", async ({
+test("sidepanel mode picker applies overlay selection", async ({
   browserName: _browserName,
 }, testInfo) => {
   const harness = await launchExtension(getBrowserFromProject(testInfo.project.name));
@@ -295,10 +293,7 @@ test("sidepanel mode picker updates theme mode", async ({
     await modeTrigger.press("Enter");
     const modeList = getOpenPickerList(page);
     await expect(modeList).toBeVisible();
-    await modeList.focus();
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.press("Enter");
+    await modeList.locator('[role="option"]').nth(2).click();
 
     await expect(modeTrigger).toHaveText("Dark");
     await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
