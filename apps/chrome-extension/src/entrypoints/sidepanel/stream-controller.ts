@@ -3,8 +3,13 @@ import {
   type SseMetaData,
   type SseSlidesData,
 } from "../../../../../src/shared/sse-events.js";
-import { mergeStreamingChunk } from "../../../../../src/shared/streaming-merge.js";
 import { parseSseStream, type SseMessage } from "../../lib/sse";
+import {
+  accumulateChatChunk,
+  accumulateSummarizeChunk,
+  getTerminalStreamError,
+  shouldSurfaceStreamingStatus,
+} from "./stream-controller-policy";
 import type { PanelPhase, RunStart } from "./types";
 
 export type StreamController = {
@@ -180,10 +185,10 @@ export function createStreamController(options: StreamControllerOptions): Stream
 
         if (event.event === "chunk") {
           if (mode === "chat") {
-            chatContent += event.data.text;
+            chatContent = accumulateChatChunk(chatContent, event.data.text);
             queueChunkUpdate();
           } else {
-            const merged = mergeStreamingChunk(markdown, event.data.text).next;
+            const merged = accumulateSummarizeChunk(markdown, event.data.text);
             if (merged !== markdown) {
               markdown = merged;
               queueRender();
@@ -206,12 +211,7 @@ export function createStreamController(options: StreamControllerOptions): Stream
           onSlides?.(event.data);
         } else if (event.event === "status") {
           const raw = typeof event.data.text === "string" ? event.data.text : "";
-          const trimmed = raw.trim().toLowerCase();
-          const allowDuringStreaming =
-            trimmed.startsWith("slides:") ||
-            trimmed.startsWith("slides ") ||
-            trimmed.startsWith("slide:");
-          if (!streamedAnyNonWhitespace || allowDuringStreaming) {
+          if (shouldSurfaceStreamingStatus({ streamedAnyNonWhitespace, statusText: raw })) {
             onStatus(raw);
           }
         } else if (event.event === "metrics") {
@@ -225,11 +225,9 @@ export function createStreamController(options: StreamControllerOptions): Stream
       }
 
       if (nextController.signal.aborted) return;
-      if (!sawDone) {
-        throw new Error("Stream ended unexpectedly. The daemon may have stopped.");
-      }
-      if (!streamedAnyNonWhitespace) {
-        throw new Error("Model returned no output.");
+      const terminalError = getTerminalStreamError({ sawDone, streamedAnyNonWhitespace });
+      if (terminalError) {
+        throw terminalError;
       }
 
       onStatus("");

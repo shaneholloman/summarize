@@ -1,11 +1,8 @@
-type ExtensionLogLevel = "info" | "warn" | "error" | "verbose";
-
-type ExtensionLogEvent = {
-  event: string;
-  level?: ExtensionLogLevel;
-  detail?: Record<string, unknown>;
-  scope?: string;
-};
+import {
+  buildLogLine,
+  parseLogMtime,
+  type ExtensionLogEvent,
+} from "./extension-log-format";
 
 type ExtensionLogResult = {
   ok: boolean;
@@ -17,7 +14,6 @@ type ExtensionLogResult = {
 
 const LOG_KEY = "summarize:extension-logs";
 const MAX_LOG_LINES = 4000;
-const MAX_LINE_LENGTH = 4000;
 const FLUSH_DELAY_MS = 250;
 const FLUSH_BATCH = 50;
 
@@ -26,73 +22,6 @@ let flushInFlight = false;
 let pendingLines: string[] = [];
 
 const getStorage = () => chrome.storage?.session ?? chrome.storage?.local;
-
-const clampString = (value: string, limit = 300) => {
-  if (value.length <= limit) return value;
-  return `${value.slice(0, limit)}…`;
-};
-
-const normalizeDetailValue = (value: unknown): string | number | boolean | string[] | null => {
-  if (value == null) return null;
-  if (typeof value === "string") return clampString(value);
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (value instanceof Error) return clampString(value.message);
-  if (Array.isArray(value)) {
-    const preview = value.slice(0, 6).map((item) => {
-      if (typeof item === "string") return clampString(item, 120);
-      if (typeof item === "number" || typeof item === "boolean") return String(item);
-      if (item instanceof Error) return clampString(item.message, 120);
-      try {
-        return clampString(JSON.stringify(item), 120);
-      } catch {
-        return String(item);
-      }
-    });
-    return preview;
-  }
-  if (typeof value === "object") {
-    try {
-      return clampString(JSON.stringify(value), 300);
-    } catch {
-      return clampString(String(value));
-    }
-  }
-  return clampString(String(value));
-};
-
-const normalizeDetails = (detail?: Record<string, unknown>) => {
-  if (!detail) return {};
-  const normalized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(detail)) {
-    const normalizedValue = normalizeDetailValue(value);
-    if (normalizedValue == null) continue;
-    normalized[key] = normalizedValue;
-  }
-  return normalized;
-};
-
-const buildLogLine = (event: ExtensionLogEvent) => {
-  const level = event.level ?? "info";
-  const details = normalizeDetails(event.detail);
-  const entry = {
-    date: new Date().toISOString(),
-    logLevelName: level,
-    event: event.event,
-    ...(event.scope ? { scope: event.scope } : {}),
-    ...details,
-  };
-  let line = JSON.stringify(entry);
-  if (line.length > MAX_LINE_LENGTH) {
-    line = JSON.stringify({
-      date: entry.date,
-      logLevelName: level,
-      event: event.event,
-      ...(event.scope ? { scope: event.scope } : {}),
-      detail: "truncated",
-    });
-  }
-  return line;
-};
 
 const queueFlush = () => {
   if (flushTimer) return;
@@ -150,20 +79,7 @@ export const readExtensionLogs = async (tail: number): Promise<ExtensionLogResul
   const total = allLines.length;
   const normalizedTail = Math.max(1, Math.min(5000, Math.round(tail)));
   const lines = total > normalizedTail ? allLines.slice(total - normalizedTail) : allLines;
-  let mtimeMs: number | null = null;
-  if (allLines.length > 0) {
-    const last = allLines[allLines.length - 1];
-    try {
-      const parsed = JSON.parse(last) as { date?: string };
-      if (parsed?.date) {
-        const parsedDate = new Date(parsed.date);
-        const time = parsedDate.getTime();
-        if (!Number.isNaN(time)) mtimeMs = time;
-      }
-    } catch {
-      // ignore
-    }
-  }
+  const mtimeMs = parseLogMtime(allLines[allLines.length - 1] ?? null);
   const sizeBytes = allLines.reduce((sum, line) => sum + line.length, 0);
   return {
     ok: true,
