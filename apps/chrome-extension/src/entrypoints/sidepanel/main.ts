@@ -14,7 +14,7 @@ import {
 } from "../../lib/settings";
 import { generateToken } from "../../lib/token";
 import { createAppearanceControls } from "./appearance-controls";
-import { handleSidepanelBgMessage } from "./bg-message-runtime";
+import { createSidepanelBgMessageRuntime } from "./bg-message-runtime";
 import { bindSettingsStorage, bindSidepanelLifecycle, bindSidepanelUiEvents } from "./bindings";
 import { runChatAgentLoop } from "./chat-agent-loop";
 import { ChatController } from "./chat-controller";
@@ -1683,105 +1683,66 @@ function updateControls(state: UiState) {
   uiStateRuntime.apply(state);
 }
 
+const bgMessageRuntime = createSidepanelBgMessageRuntime({
+  panelState,
+  applyUiState: updateControls,
+  setStatus: (text) => {
+    headerController.setStatus(text);
+  },
+  isStreaming,
+  setPhase,
+  finishStreamingMessage: () => {
+    chatStreamRuntime.finishStreamingMessage();
+  },
+  setSlidesBusy,
+  showSlideNotice,
+  getActiveTabUrl: () => activeTabUrl,
+  rememberPendingSlidesRun: (value) => {
+    pendingSlidesRunsByUrl.set(normalizePanelUrl(value.url), value);
+  },
+  startSlidesStreamForRunId,
+  startSlidesSummaryStreamForRunId: (runId, url) => {
+    startSlidesSummaryStreamForRunId(runId, url ?? null);
+  },
+  getSlidesContextRequestId: () => slidesContextRequestId,
+  setSlidesContextPending: (value) => {
+    slidesContextPending = value;
+  },
+  setSlidesTranscriptTimedText,
+  updateSlidesTextState,
+  getSlidesSummaryState: () => ({
+    complete: slidesSummaryComplete,
+    markdown: slidesSummaryMarkdown,
+  }),
+  updateSlideSummaryFromMarkdown,
+  renderInlineSlidesFallback: () => {
+    renderInlineSlides(renderMarkdownHostEl, { fallback: true });
+  },
+  schedulePanelCacheSync: () => {
+    panelCacheController.scheduleSync();
+  },
+  consumeUiCache: (cacheMessage) => panelCacheController.consumeResponse(cacheMessage),
+  getActiveTabId: () => activeTabId,
+  applyPanelCache: (cache, opts) => {
+    applyPanelCache(cache as PanelCachePayload, opts);
+  },
+  rememberPendingSummaryRun: (run) => {
+    pendingSummaryRunsByUrl.set(normalizePanelUrl(run.url), run);
+  },
+  attachSummaryRun,
+  handleChatHistory: (chatHistory) => {
+    chatSession.handleChatHistoryResponse(chatHistory as never);
+  },
+  handleAgentChunk: (chunk) => {
+    chatSession.handleAgentChunk(chunk as never);
+  },
+  handleAgentResponse: (response) => {
+    chatSession.handleAgentResponse(response as never);
+  },
+});
+
 function handleBgMessage(msg: BgToPanel) {
-  handleSidepanelBgMessage({
-    msg,
-    applyUiState: (state) => {
-      panelState.ui = state;
-      updateControls(state);
-    },
-    setStatus: (text) => {
-      headerController.setStatus(text);
-    },
-    isStreaming,
-    handleRunError: (message) => {
-      const detail = message && message.trim().length > 0 ? message : "Something went wrong.";
-      headerController.setStatus(`Error: ${detail}`);
-      setPhase("error", { error: detail });
-      if (panelState.chatStreaming) {
-        chatStreamRuntime.finishStreamingMessage();
-      }
-    },
-    handleSlidesRun: (slidesRun) => {
-      if (!slidesRun.ok) {
-        setSlidesBusy(false);
-        if (slidesRun.error) {
-          showSlideNotice(slidesRun.error, { allowRetry: true });
-        }
-        return;
-      }
-      if (!slidesRun.runId) return;
-      const targetUrl = slidesRun.url ?? null;
-      if (
-        !shouldAcceptSlidesForCurrentPage({
-          targetUrl,
-          activeTabUrl,
-          currentSourceUrl: panelState.currentSource?.url ?? null,
-        })
-      ) {
-        pendingSlidesRunsByUrl.set(normalizePanelUrl(targetUrl), {
-          runId: slidesRun.runId,
-          url: targetUrl,
-        });
-        return;
-      }
-      startSlidesStreamForRunId(slidesRun.runId);
-      startSlidesSummaryStreamForRunId(slidesRun.runId, targetUrl ?? null);
-    },
-    handleSlidesContext: (slidesContext) => {
-      if (!panelState.slides) return;
-      const expectedId = `slides-${slidesContextRequestId}`;
-      if (slidesContext.requestId !== expectedId) return;
-      slidesContextPending = false;
-      setSlidesTranscriptTimedText(
-        slidesContext.ok ? (slidesContext.transcriptTimedText ?? null) : null,
-      );
-      updateSlidesTextState();
-      const summarySource =
-        slidesSummaryComplete && slidesSummaryMarkdown.trim()
-          ? slidesSummaryMarkdown
-          : (panelState.summaryMarkdown ?? "");
-      if (summarySource) {
-        updateSlideSummaryFromMarkdown(summarySource, {
-          preserveIfEmpty: false,
-          source:
-            slidesSummaryComplete && slidesSummaryMarkdown.trim().length > 0 ? "slides" : "summary",
-        });
-        renderInlineSlides(renderMarkdownHostEl, { fallback: true });
-      }
-      if (!slidesContext.ok) return;
-      panelCacheController.scheduleSync();
-    },
-    handleUiCache: (cacheMessage) => {
-      const result = panelCacheController.consumeResponse(cacheMessage);
-      if (!result) return;
-      if (activeTabId !== result.tabId || activeTabUrl !== result.url) return;
-      if (!result.cache) return;
-      applyPanelCache(result.cache, { preserveChat: result.preserveChat });
-    },
-    handleRunStart: (run) => {
-      if (
-        !shouldAcceptRunForCurrentPage({
-          runUrl: run.url,
-          activeTabUrl,
-          currentSourceUrl: panelState.currentSource?.url ?? null,
-        })
-      ) {
-        pendingSummaryRunsByUrl.set(normalizePanelUrl(run.url), run);
-        return;
-      }
-      attachSummaryRun(run);
-    },
-    handleChatHistory: (chatHistory) => {
-      chatSession.handleChatHistoryResponse(chatHistory as never);
-    },
-    handleAgentChunk: (chunk) => {
-      chatSession.handleAgentChunk(chunk as never);
-    },
-    handleAgentResponse: (response) => {
-      chatSession.handleAgentResponse(response as never);
-    },
-  });
+  bgMessageRuntime.handle(msg);
 }
 
 function scheduleAutoKick() {

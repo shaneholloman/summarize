@@ -1,3 +1,8 @@
+import {
+  normalizePanelUrl,
+  shouldAcceptRunForCurrentPage,
+  shouldAcceptSlidesForCurrentPage,
+} from "./session-policy";
 import type { UiState, RunStart } from "./types";
 
 type BgMessage =
@@ -77,4 +82,163 @@ export function handleSidepanelBgMessage(options: {
       options.handleAgentResponse(msg);
       return;
   }
+}
+
+type SlidesContextMessage = Extract<BgMessage, { type: "slides:context" }>;
+type SlidesRunMessage = Extract<BgMessage, { type: "slides:run" }>;
+type UiCacheMessage = Extract<BgMessage, { type: "ui:cache" }>;
+
+export function createSidepanelBgMessageRuntime(options: {
+  panelState: {
+    ui: UiState | null;
+    error: string | null;
+    chatStreaming: boolean;
+    currentSource: { url: string | null } | null;
+    summaryMarkdown: string | null;
+    slides: unknown;
+  };
+  applyUiState: (state: UiState) => void;
+  setStatus: (text: string) => void;
+  isStreaming: () => boolean;
+  setPhase: (phase: "error", opts?: { error?: string | null }) => void;
+  finishStreamingMessage: () => void;
+  setSlidesBusy: (busy: boolean) => void;
+  showSlideNotice: (message: string, opts?: { allowRetry?: boolean }) => void;
+  getActiveTabUrl: () => string | null;
+  rememberPendingSlidesRun: (value: { runId: string; url: string | null }) => void;
+  startSlidesStreamForRunId: (runId: string) => void;
+  startSlidesSummaryStreamForRunId: (runId: string, url: string | null) => void;
+  getSlidesContextRequestId: () => number;
+  setSlidesContextPending: (value: boolean) => void;
+  setSlidesTranscriptTimedText: (value: string | null) => void;
+  updateSlidesTextState: () => void;
+  getSlidesSummaryState: () => {
+    complete: boolean;
+    markdown: string;
+  };
+  updateSlideSummaryFromMarkdown: (
+    markdown: string,
+    opts?: {
+      preserveIfEmpty?: boolean;
+      source?: "slides" | "summary";
+    },
+  ) => void;
+  renderInlineSlidesFallback: () => void;
+  schedulePanelCacheSync: () => void;
+  consumeUiCache: (msg: UiCacheMessage) => {
+    tabId: number;
+    url: string;
+    cache: unknown;
+    preserveChat: boolean;
+  } | null;
+  getActiveTabId: () => number | null;
+  applyPanelCache: (cache: unknown, opts: { preserveChat?: boolean }) => void;
+  rememberPendingSummaryRun: (run: RunStart) => void;
+  attachSummaryRun: (run: RunStart) => void;
+  handleChatHistory: (msg: Extract<BgMessage, { type: "chat:history" }>) => void;
+  handleAgentChunk: (msg: Extract<BgMessage, { type: "agent:chunk" }>) => void;
+  handleAgentResponse: (msg: Extract<BgMessage, { type: "agent:response" }>) => void;
+}) {
+  return {
+    handle(msg: BgMessage) {
+      handleSidepanelBgMessage({
+        msg,
+        applyUiState: (state) => {
+          options.panelState.ui = state;
+          options.applyUiState(state);
+        },
+        setStatus: options.setStatus,
+        isStreaming: options.isStreaming,
+        handleRunError: (message) => {
+          const detail = message && message.trim().length > 0 ? message : "Something went wrong.";
+          options.setStatus(`Error: ${detail}`);
+          options.setPhase("error", { error: detail });
+          if (options.panelState.chatStreaming) {
+            options.finishStreamingMessage();
+          }
+        },
+        handleSlidesRun: (slidesRun: SlidesRunMessage) => {
+          if (!slidesRun.ok) {
+            options.setSlidesBusy(false);
+            if (slidesRun.error) {
+              options.showSlideNotice(slidesRun.error, { allowRetry: true });
+            }
+            return;
+          }
+          if (!slidesRun.runId) return;
+          const targetUrl = slidesRun.url ?? null;
+          if (
+            !shouldAcceptSlidesForCurrentPage({
+              targetUrl,
+              activeTabUrl: options.getActiveTabUrl(),
+              currentSourceUrl: options.panelState.currentSource?.url ?? null,
+            })
+          ) {
+            options.rememberPendingSlidesRun({
+              runId: slidesRun.runId,
+              url: targetUrl,
+            });
+            return;
+          }
+          options.startSlidesStreamForRunId(slidesRun.runId);
+          options.startSlidesSummaryStreamForRunId(slidesRun.runId, targetUrl);
+        },
+        handleSlidesContext: (slidesContext: SlidesContextMessage) => {
+          if (!options.panelState.slides) return;
+          const expectedId = `slides-${options.getSlidesContextRequestId()}`;
+          if (slidesContext.requestId !== expectedId) return;
+          options.setSlidesContextPending(false);
+          options.setSlidesTranscriptTimedText(
+            slidesContext.ok ? (slidesContext.transcriptTimedText ?? null) : null,
+          );
+          options.updateSlidesTextState();
+          const slidesSummary = options.getSlidesSummaryState();
+          const summarySource =
+            slidesSummary.complete && slidesSummary.markdown.trim()
+              ? slidesSummary.markdown
+              : (options.panelState.summaryMarkdown ?? "");
+          if (summarySource) {
+            options.updateSlideSummaryFromMarkdown(summarySource, {
+              preserveIfEmpty: false,
+              source:
+                slidesSummary.complete && slidesSummary.markdown.trim().length > 0
+                  ? "slides"
+                  : "summary",
+            });
+            options.renderInlineSlidesFallback();
+          }
+          if (!slidesContext.ok) return;
+          options.schedulePanelCacheSync();
+        },
+        handleUiCache: (cacheMessage: UiCacheMessage) => {
+          const result = options.consumeUiCache(cacheMessage);
+          if (!result) return;
+          if (
+            options.getActiveTabId() !== result.tabId ||
+            options.getActiveTabUrl() !== result.url
+          ) {
+            return;
+          }
+          if (!result.cache) return;
+          options.applyPanelCache(result.cache, { preserveChat: result.preserveChat });
+        },
+        handleRunStart: (run: RunStart) => {
+          if (
+            !shouldAcceptRunForCurrentPage({
+              runUrl: run.url,
+              activeTabUrl: options.getActiveTabUrl(),
+              currentSourceUrl: options.panelState.currentSource?.url ?? null,
+            })
+          ) {
+            options.rememberPendingSummaryRun(run);
+            return;
+          }
+          options.attachSummaryRun(run);
+        },
+        handleChatHistory: options.handleChatHistory,
+        handleAgentChunk: options.handleAgentChunk,
+        handleAgentResponse: options.handleAgentResponse,
+      });
+    },
+  };
 }
