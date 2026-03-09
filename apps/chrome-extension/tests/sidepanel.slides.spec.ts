@@ -16,7 +16,6 @@ import {
   applySlidesPayload,
   getPanelSlideDescriptions,
   getPanelSlidesTimeline,
-  getPanelTranscriptTimedText,
   setPanelTranscriptTimedText,
   waitForApplySlidesHook,
   waitForSettingsHydratedHook,
@@ -166,9 +165,10 @@ test("sidepanel shows transcript-first gallery cards and hides the big summary b
     );
 
     await expect
-      .poll(async () => await getPanelTranscriptTimedText(page), {
-        timeout: 10_000,
-      })
+      .poll(
+        async () => (await getPanelSlideDescriptions(page)).map(([, text]) => text).join("\n"),
+        { timeout: 10_000 },
+      )
       .toContain("Helia returns to command.");
     await expect(page.locator(".slideGallery")).toHaveCount(1);
     await expect(page.locator(".slideStrip")).toHaveCount(0);

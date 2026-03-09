@@ -182,11 +182,23 @@ export async function launchExtension(
     `--load-extension=${extensionPath}`,
   ];
 
-  const context = await browserType.launchPersistentContext(userDataDir, {
-    ...(browser === "chromium" ? { channel: "chromium" } : {}),
-    headless,
-    args,
-  });
+  const launchContext = async (targetUserDataDir: string) =>
+    await browserType.launchPersistentContext(targetUserDataDir, {
+      ...(browser === "chromium" ? { channel: "chromium" } : {}),
+      headless,
+      args,
+    });
+
+  let context: BrowserContext;
+  let effectiveUserDataDir = userDataDir;
+  try {
+    context = await launchContext(userDataDir);
+  } catch (error) {
+    if (browser !== "chromium") throw error;
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+    effectiveUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "summarize-ext-"));
+    context = await launchContext(effectiveUserDataDir);
+  }
   await context.route("**/favicon.ico", async (route) => {
     await route.fulfill({ status: 204, body: "" });
   });
@@ -222,7 +234,7 @@ export async function launchExtension(
     extensionId,
     pageErrors: [],
     consoleErrors: [],
-    userDataDir,
+    userDataDir: effectiveUserDataDir,
     browser,
   };
 }
