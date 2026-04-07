@@ -15,7 +15,7 @@
 
 - Chrome extension: add a copy button for rendered summaries so results can be copied without manual selection.
 - GitHub Models: make `github-copilot/...` shorthand inference family-based instead of pinning old exact prefixes, so newer ids like `gpt-5.4`, `o5`, and `claude-opus-4.6` normalize correctly when the backend exposes them.
-- OpenAI models: route GPT-5.4 / GPT-5 mini / GPT-5 nano text requests through direct provider APIs instead of the stale generic parser, normalize `gpt-5.4-mini` / `gpt-5.4-nano` shorthands to the live mini/nano ids, and fall GitHub Models OpenAI GPT-5-family requests back to `gpt-5-chat` when GitHub rejects the raw id.
+- OpenAI models: route GPT-5.4 / GPT-5.4 mini / GPT-5.4 nano / GPT-5 mini / GPT-5 nano text requests through direct provider APIs instead of the stale generic parser, preserve the real `gpt-5.4-mini` / `gpt-5.4-nano` ids end-to-end, and fall GitHub Models OpenAI GPT-5-family requests back to `gpt-5-chat` when GitHub rejects the raw id.
 - Transcription: retry Groq Whisper uploads via `curl` when Node multipart uploads get a 403, fixing local `.ogg` regressions on some environments.
 - CLI providers: stream OpenClaw prompts over stdin instead of `--message`, make daemon side-panel chat honor `openai.useChatCompletions`/custom OpenAI-compatible base URLs, and stop leaking raw Codex JSONL events like `thread.started` when no assistant text was produced.
 - Slides/local video: transcribe direct videos for slide summaries, avoid fake local-file “Downloading audio” phases, and keep progress text visible while slide extraction runs.

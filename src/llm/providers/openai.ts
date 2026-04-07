@@ -244,6 +244,25 @@ function buildOpenAiRequestHeaders(openaiConfig: OpenAiClientConfig): Record<str
   };
 }
 
+function createOpenAiHttpError({
+  baseUrl,
+  status,
+  bodyText,
+}: {
+  baseUrl: string;
+  status: number;
+  bodyText: string;
+}): Error {
+  const message =
+    isGitHubModelsBaseUrl(baseUrl) && status === 429
+      ? "GitHub Models rate limit exceeded (429). Try again later or use another model/token."
+      : `OpenAI API error (${status}).`;
+  const error = new Error(message);
+  (error as { statusCode?: number }).statusCode = status;
+  (error as { responseBody?: string }).responseBody = bodyText;
+  return error;
+}
+
 async function completeOpenAiChatText({
   modelId,
   openaiConfig,
@@ -276,10 +295,7 @@ async function completeOpenAiChatText({
 
   const bodyText = await response.text();
   if (!response.ok) {
-    const error = new Error(`OpenAI API error (${response.status}).`);
-    (error as { statusCode?: number }).statusCode = response.status;
-    (error as { responseBody?: string }).responseBody = bodyText;
-    throw error;
+    throw createOpenAiHttpError({ baseUrl, status: response.status, bodyText });
   }
 
   const data = JSON.parse(bodyText) as {
@@ -324,10 +340,7 @@ async function completeOpenAiResponsesText({
 
   const bodyText = await response.text();
   if (!response.ok) {
-    const error = new Error(`OpenAI API error (${response.status}).`);
-    (error as { statusCode?: number }).statusCode = response.status;
-    (error as { responseBody?: string }).responseBody = bodyText;
-    throw error;
+    throw createOpenAiHttpError({ baseUrl, status: response.status, bodyText });
   }
 
   const data = JSON.parse(bodyText) as {
@@ -525,10 +538,7 @@ export async function completeOpenAiDocument({
 
     const bodyText = await response.text();
     if (!response.ok) {
-      const error = new Error(`OpenAI API error (${response.status}).`);
-      (error as { statusCode?: number }).statusCode = response.status;
-      (error as { responseBody?: string }).responseBody = bodyText;
-      throw error;
+      throw createOpenAiHttpError({ baseUrl, status: response.status, bodyText });
     }
 
     const data = JSON.parse(bodyText) as {

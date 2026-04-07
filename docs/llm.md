@@ -48,6 +48,8 @@ installed, auto mode can use local CLI models via `cli.enabled` or implicit auto
     - `cli/openclaw/main`
     - `cli/opencode/openai/gpt-5.4`
     - `openai/gpt-5.4`
+    - `openai/gpt-5.4-mini`
+    - `openai/gpt-5.4-nano`
     - `google/gemini-3-flash`
     - `openai/gpt-5-mini`
     - `openai/gpt-5-nano`
@@ -111,6 +113,8 @@ Use `--model github-copilot/<model>` for explicit GitHub-hosted model calls.
 
 - Examples:
   - `github-copilot/gpt-5.4`
+  - `github-copilot/gpt-5.4-mini`
+  - `github-copilot/gpt-5.4-nano`
   - `github-copilot/gpt-5-mini`
   - `github-copilot/gpt-5-nano`
   - `github-copilot/anthropic/claude-haiku-4.5`

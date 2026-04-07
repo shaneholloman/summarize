@@ -15,13 +15,13 @@ describe("model id parsing", () => {
     expect(normalizeGatewayStyleModelId("github-copilot/gpt-5.4")).toBe(
       "github-copilot/openai/gpt-5.4",
     );
-    expect(normalizeGatewayStyleModelId("openai/gpt-5.4-mini")).toBe("openai/gpt-5-mini");
-    expect(normalizeGatewayStyleModelId("openai/gpt-5.4-nano")).toBe("openai/gpt-5-nano");
+    expect(normalizeGatewayStyleModelId("openai/gpt-5.4-mini")).toBe("openai/gpt-5.4-mini");
+    expect(normalizeGatewayStyleModelId("openai/gpt-5.4-nano")).toBe("openai/gpt-5.4-nano");
     expect(normalizeGatewayStyleModelId("github-copilot/gpt-5.4-mini")).toBe(
-      "github-copilot/openai/gpt-5-mini",
+      "github-copilot/openai/gpt-5.4-mini",
     );
     expect(normalizeGatewayStyleModelId("github-copilot/gpt-5.4-nano")).toBe(
-      "github-copilot/openai/gpt-5-nano",
+      "github-copilot/openai/gpt-5.4-nano",
     );
   });
 
@@ -92,8 +92,8 @@ describe("model id parsing", () => {
     expect(normalizeGatewayStyleModelId("grok-4")).toBe("xai/grok-4");
     expect(normalizeGatewayStyleModelId("gemini-2.0-flash")).toBe("google/gemini-2.0-flash");
     expect(normalizeGatewayStyleModelId("gpt-5.2")).toBe("openai/gpt-5.2");
-    expect(normalizeGatewayStyleModelId("gpt-5.4-mini")).toBe("openai/gpt-5-mini");
-    expect(normalizeGatewayStyleModelId("gpt-5.4-nano")).toBe("openai/gpt-5-nano");
+    expect(normalizeGatewayStyleModelId("gpt-5.4-mini")).toBe("openai/gpt-5.4-mini");
+    expect(normalizeGatewayStyleModelId("gpt-5.4-nano")).toBe("openai/gpt-5.4-nano");
     expect(normalizeGatewayStyleModelId("claude-sonnet-4-5")).toBe("anthropic/claude-sonnet-4-5");
   });
 

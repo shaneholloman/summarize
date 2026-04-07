@@ -492,4 +492,32 @@ describe("openai provider helpers", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("surfaces GitHub Models 429 errors with rate-limit guidance", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: "rate_limited" }), { status: 429 })),
+    );
+    try {
+      await expect(
+        completeOpenAiText({
+          modelId: "openai/gpt-5.4-mini",
+          openaiConfig: {
+            apiKey: "gh-key",
+            baseURL: "https://models.github.ai/inference",
+            useChatCompletions: true,
+            isOpenRouter: false,
+          },
+          context: {
+            systemPrompt: null,
+            messages: [{ role: "user", content: "hello" }],
+          },
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toThrow(/GitHub Models rate limit exceeded \(429\)/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
