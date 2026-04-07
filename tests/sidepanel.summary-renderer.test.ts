@@ -62,6 +62,157 @@ describe("sidepanel summary renderer", () => {
     expect(links[0]?.getAttribute("target")).toBeNull();
     expect(links[1]?.getAttribute("target")).toBe("_blank");
     expect(renderInlineSlides).toHaveBeenCalledWith(hostEl, { fallback: true });
+    expect(hostEl.querySelector(".render__copy")).not.toBeNull();
+  });
+
+  it("copies rendered markdown text to the clipboard", async () => {
+    const hostEl = document.createElement("div");
+    const setStatus = vi.fn();
+    const writeText = vi.fn(async () => {});
+    Object.assign(navigator, {
+      clipboard: {
+        writeText,
+      },
+    });
+
+    renderSummaryMarkdownDisplay({
+      activeTabUrl: "https://example.com/watch",
+      autoSummarize: false,
+      currentSourceTitle: "Video",
+      currentSourceUrl: "https://example.com/watch",
+      hasSlides: false,
+      headerSetStatus: setStatus,
+      hostEl,
+      inputMode: "video",
+      markdown: "# Title\n\nBody",
+      md: { render: (value) => `<p>${value}</p>` },
+      phase: "done",
+      renderInlineSlides: vi.fn(),
+      slidesEnabled: false,
+      slidesLayout: "gallery",
+      tabTitle: "Video",
+      tabUrl: "https://example.com/watch",
+    });
+
+    hostEl.querySelector<HTMLButtonElement>(".render__copy")?.click();
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith("# Title\n\nBody");
+    expect(setStatus).toHaveBeenCalledWith("Copied");
+  });
+
+  it("reports empty copy attempts without touching the clipboard", async () => {
+    const hostEl = document.createElement("div");
+    const setStatus = vi.fn();
+    const writeText = vi.fn(async () => {});
+    Object.assign(navigator, {
+      clipboard: {
+        writeText,
+      },
+    });
+
+    renderSummaryMarkdownDisplay({
+      activeTabUrl: "https://example.com/watch",
+      autoSummarize: false,
+      currentSourceTitle: "Video",
+      currentSourceUrl: "https://example.com/watch",
+      hasSlides: false,
+      headerSetStatus: setStatus,
+      hostEl,
+      inputMode: "video",
+      markdown: "   ",
+      md: { render: (value) => `<p>${value}</p>` },
+      phase: "done",
+      renderInlineSlides: vi.fn(),
+      slidesEnabled: false,
+      slidesLayout: "gallery",
+      tabTitle: "Video",
+      tabUrl: "https://example.com/watch",
+    });
+
+    expect(hostEl.textContent).toContain("Summarize");
+    expect(writeText).not.toHaveBeenCalled();
+    expect(setStatus).not.toHaveBeenCalledWith("Copied");
+  });
+
+  it("falls back to execCommand copy when clipboard write fails", async () => {
+    const hostEl = document.createElement("div");
+    const setStatus = vi.fn();
+    const writeText = vi.fn(async () => {
+      throw new Error("blocked");
+    });
+    const execCommand = vi.fn(() => true);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText,
+      },
+    });
+    Object.assign(document, { execCommand });
+
+    renderSummaryMarkdownDisplay({
+      activeTabUrl: "https://example.com/watch",
+      autoSummarize: false,
+      currentSourceTitle: "Video",
+      currentSourceUrl: "https://example.com/watch",
+      hasSlides: false,
+      headerSetStatus: setStatus,
+      hostEl,
+      inputMode: "video",
+      markdown: "Body",
+      md: { render: (value) => `<p>${value}</p>` },
+      phase: "done",
+      renderInlineSlides: vi.fn(),
+      slidesEnabled: false,
+      slidesLayout: "gallery",
+      tabTitle: "Video",
+      tabUrl: "https://example.com/watch",
+    });
+
+    hostEl.querySelector<HTMLButtonElement>(".render__copy")?.click();
+    await Promise.resolve();
+
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(setStatus).toHaveBeenCalledWith("Copied");
+  });
+
+  it("surfaces a failed execCommand fallback", async () => {
+    const hostEl = document.createElement("div");
+    const setStatus = vi.fn();
+    const writeText = vi.fn(async () => {
+      throw new Error("blocked");
+    });
+    const execCommand = vi.fn(() => false);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText,
+      },
+    });
+    Object.assign(document, { execCommand });
+
+    renderSummaryMarkdownDisplay({
+      activeTabUrl: "https://example.com/watch",
+      autoSummarize: false,
+      currentSourceTitle: "Video",
+      currentSourceUrl: "https://example.com/watch",
+      hasSlides: false,
+      headerSetStatus: setStatus,
+      hostEl,
+      inputMode: "video",
+      markdown: "Body",
+      md: { render: (value) => `<p>${value}</p>` },
+      phase: "done",
+      renderInlineSlides: vi.fn(),
+      slidesEnabled: false,
+      slidesLayout: "gallery",
+      tabTitle: "Video",
+      tabUrl: "https://example.com/watch",
+    });
+
+    hostEl.querySelector<HTMLButtonElement>(".render__copy")?.click();
+    await Promise.resolve();
+
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(setStatus).toHaveBeenCalledWith("Copy failed");
   });
 
   it("falls back to the empty state and reports markdown render errors", () => {

@@ -2,6 +2,64 @@ import { selectMarkdownForLayout } from "./slides-state";
 import { buildSummaryEmptyState } from "./summary-empty-state";
 import { linkifyTimestamps } from "./timestamp-links";
 
+function createCopyButton({
+  text,
+  headerSetStatus,
+}: {
+  text: string;
+  headerSetStatus: (text: string) => void;
+}) {
+  const button = document.createElement("button");
+  button.className = "ghost icon render__copy";
+  button.type = "button";
+  button.setAttribute("aria-label", "Copy summary");
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V6Zm-4 4a2 2 0 0 1 2-2h1v2H6v8h8v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9Z" />
+    </svg>
+  `;
+  button.addEventListener("click", () => {
+    void copySummaryText({ text, headerSetStatus });
+  });
+  return button;
+}
+
+async function copySummaryText({
+  text,
+  headerSetStatus,
+}: {
+  text: string;
+  headerSetStatus: (text: string) => void;
+}) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    headerSetStatus("Nothing to copy");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(trimmed);
+    headerSetStatus("Copied");
+    return;
+  } catch {
+    // fallback
+  }
+  const selection = document.getSelection();
+  const range = document.createRange();
+  const ghost = document.createElement("textarea");
+  ghost.value = trimmed;
+  ghost.setAttribute("readonly", "true");
+  ghost.style.position = "fixed";
+  ghost.style.opacity = "0";
+  document.body.append(ghost);
+  ghost.focus();
+  ghost.select();
+  const ok = document.execCommand("copy");
+  ghost.remove();
+  selection?.removeAllRanges();
+  range.detach();
+  headerSetStatus(ok ? "Copied" : "Copy failed");
+}
+
 export function renderSummaryEmptyState({
   hostEl,
   state,
@@ -88,7 +146,14 @@ export function renderSummaryMarkdownDisplay({
     return;
   }
   try {
-    hostEl.innerHTML = md.render(linkifyTimestamps(displayMarkdown));
+    hostEl.innerHTML = "";
+    const actions = document.createElement("div");
+    actions.className = "render__actions";
+    actions.append(createCopyButton({ text: displayMarkdown, headerSetStatus }));
+    const markdownHost = document.createElement("div");
+    markdownHost.className = "render__markdownBody";
+    markdownHost.innerHTML = md.render(linkifyTimestamps(displayMarkdown));
+    hostEl.append(actions, markdownHost);
   } catch (err) {
     const message = err instanceof Error ? err.stack || err.message : String(err);
     headerSetStatus(`Error: ${message}`);
