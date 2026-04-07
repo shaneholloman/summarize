@@ -34,9 +34,15 @@ export function createSlidesStreamController(
   let controller: AbortController | null = null;
   let streaming = false;
   let activeAbortState: { reason: "manual" | "timeout" | null } | null = null;
+  let activeGeneration = 0;
 
   const abort = () => {
-    if (!controller) return;
+    activeGeneration += 1;
+    if (!controller) {
+      activeAbortState = null;
+      streaming = false;
+      return;
+    }
     if (activeAbortState) activeAbortState.reason = "manual";
     controller.abort();
     controller = null;
@@ -45,14 +51,25 @@ export function createSlidesStreamController(
   };
 
   const start = async (runId: string) => {
+    const generation = activeGeneration + 1;
+    activeGeneration = generation;
+    if (controller) {
+      if (activeAbortState) activeAbortState.reason = "manual";
+      controller.abort();
+      controller = null;
+      activeAbortState = null;
+    }
+    streaming = true;
     const token = (await getToken()).trim();
-    if (!token) return;
-    abort();
+    if (generation !== activeGeneration) return;
+    if (!token) {
+      streaming = false;
+      return;
+    }
     const nextController = new AbortController();
     controller = nextController;
     const abortState = { reason: null as "manual" | "timeout" | null };
     activeAbortState = abortState;
-    streaming = true;
     let sawDone = false;
 
     try {
@@ -88,6 +105,7 @@ export function createSlidesStreamController(
       while (true) {
         const { value: msg, done } = await nextWithTimeout();
         if (done) break;
+        if (generation !== activeGeneration) return;
         if (nextController.signal.aborted) return;
         const event = parseSseEvent(msg);
         if (!event) continue;
@@ -103,6 +121,7 @@ export function createSlidesStreamController(
         }
       }
 
+      if (generation !== activeGeneration) return;
       if (nextController.signal.aborted) return;
       if (!sawDone) {
         throw new Error("Stream ended unexpectedly. The daemon may have stopped.");
@@ -117,7 +136,7 @@ export function createSlidesStreamController(
       if (nextController.signal.aborted && abortState.reason !== "timeout") return;
       onError?.(err);
     } finally {
-      if (controller === nextController) {
+      if (generation === activeGeneration && controller === nextController) {
         streaming = false;
         activeAbortState = null;
         if (!nextController.signal.aborted) {

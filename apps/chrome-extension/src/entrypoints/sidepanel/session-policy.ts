@@ -21,7 +21,7 @@ export function panelUrlsMatch(a: string, b: string) {
   return boundaryMatch(left, right) || boundaryMatch(right, left);
 }
 
-function isMatchablePanelUrl(value: string | null) {
+export function isMatchablePanelUrl(value: string | null) {
   if (!value) return false;
   return !(
     value.startsWith("chrome://") ||
@@ -30,6 +30,19 @@ function isMatchablePanelUrl(value: string | null) {
     value.startsWith("edge://") ||
     value.startsWith("about:")
   );
+}
+
+export function shouldIgnoreTransientPanelTabState({
+  nextTabUrl,
+  activeTabUrl,
+  currentSourceUrl,
+}: {
+  nextTabUrl: string | null;
+  activeTabUrl: string | null;
+  currentSourceUrl: string | null;
+}) {
+  if (isMatchablePanelUrl(nextTabUrl)) return false;
+  return isMatchablePanelUrl(currentSourceUrl) || isMatchablePanelUrl(activeTabUrl);
 }
 
 export type PanelNavigationDecision = {

@@ -1,6 +1,10 @@
 import { shouldPreferUrlMode } from "@steipete/summarize-core/content/url";
 import type { PanelCachePayload } from "./panel-cache";
-import { resolvePanelNavigationDecision, shouldInvalidateCurrentSource } from "./session-policy";
+import {
+  resolvePanelNavigationDecision,
+  shouldIgnoreTransientPanelTabState,
+  shouldInvalidateCurrentSource,
+} from "./session-policy";
 import type { ChatMessage, PanelPhase, PanelState, UiState } from "./types";
 
 type AppearanceControlsLike = {
@@ -150,14 +154,23 @@ export function createUiStateRuntime(opts: UiStateRuntimeOpts) {
 
     const activeTabId = opts.getActiveTabId();
     const activeTabUrl = opts.getActiveTabUrl();
+    const currentSource = opts.panelState.currentSource;
     const inputModeOverride = opts.getInputModeOverride();
     const inputMode = opts.getInputMode();
     const mediaAvailable = opts.getMediaAvailable();
     const chatEnabledValue = opts.getChatEnabledValue();
     const slidesLayoutValue = opts.getSlidesLayoutValue();
 
-    const nextTabId = state.tab.id ?? null;
-    const nextTabUrl = state.tab.url ?? null;
+    const ignoreTransientTabState = shouldIgnoreTransientPanelTabState({
+      nextTabUrl: state.tab.url ?? null,
+      activeTabUrl,
+      currentSourceUrl: currentSource?.url ?? null,
+    });
+    const nextTabId = ignoreTransientTabState ? activeTabId : (state.tab.id ?? null);
+    const nextTabUrl = ignoreTransientTabState ? activeTabUrl : (state.tab.url ?? null);
+    const nextTabTitle = ignoreTransientTabState
+      ? (currentSource?.title ?? null)
+      : (state.tab.title ?? null);
     const preferUrlMode = nextTabUrl ? shouldPreferUrlMode(nextTabUrl) : false;
     const hasActiveChat =
       opts.panelState.chatStreaming ||
@@ -306,32 +319,34 @@ export function createUiStateRuntime(opts: UiStateRuntimeOpts) {
     if (opts.panelState.currentSource) {
       if (
         shouldInvalidateCurrentSource({
-          stateTabUrl: state.tab.url,
+          stateTabUrl: nextTabUrl,
           currentSourceUrl: opts.panelState.currentSource.url,
         })
       ) {
         const preserveChat = opts.navigationRuntime.isRecentAgentNavigation(
           opts.getActiveTabId(),
-          state.tab.url,
+          nextTabUrl,
         );
         if (preserveChat) {
-          opts.navigationRuntime.notePreserveChatForUrl(state.tab.url);
+          opts.navigationRuntime.notePreserveChatForUrl(nextTabUrl);
         }
         opts.panelState.currentSource = null;
         opts.setCurrentRunTabId(null);
         opts.resetSummaryView({ preserveChat });
-      } else if (state.tab.title && state.tab.title !== opts.panelState.currentSource.title) {
+      } else if (nextTabTitle && nextTabTitle !== opts.panelState.currentSource.title) {
         opts.panelState.currentSource = {
           ...opts.panelState.currentSource,
-          title: state.tab.title,
+          title: nextTabTitle,
         };
-        opts.headerController.setBaseTitle(state.tab.title);
+        opts.headerController.setBaseTitle(nextTabTitle);
       }
     }
     if (!opts.panelState.currentSource) {
-      opts.panelState.lastMeta = { inputSummary: null, model: null, modelLabel: null };
-      opts.headerController.setBaseTitle(state.tab.title || state.tab.url || "Summarize");
-      opts.headerController.setBaseSubtitle("");
+      if (!ignoreTransientTabState) {
+        opts.panelState.lastMeta = { inputSummary: null, model: null, modelLabel: null };
+        opts.headerController.setBaseTitle(nextTabTitle || nextTabUrl || "Summarize");
+        opts.headerController.setBaseSubtitle("");
+      }
     }
     if (!opts.isStreaming()) {
       opts.headerController.setStatus(state.status);

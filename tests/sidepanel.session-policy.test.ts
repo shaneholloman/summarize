@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  isMatchablePanelUrl,
   normalizePanelUrl,
   panelUrlsMatch,
   resolvePanelNavigationDecision,
   shouldAcceptRunForCurrentPage,
   shouldAcceptSlidesForCurrentPage,
+  shouldIgnoreTransientPanelTabState,
   shouldInvalidateCurrentSource,
 } from "../apps/chrome-extension/src/entrypoints/sidepanel/session-policy.js";
 
@@ -114,5 +116,30 @@ describe("sidepanel session policy", () => {
         "https://www.youtube.com/watch?v=abc123&t=10",
       ),
     ).toBe(true);
+  });
+
+  it("treats extension and blank urls as transient when a real source is already active", () => {
+    expect(isMatchablePanelUrl("chrome-extension://test/sidepanel.html")).toBe(false);
+    expect(
+      shouldIgnoreTransientPanelTabState({
+        nextTabUrl: "chrome-extension://test/sidepanel.html",
+        activeTabUrl: "https://www.youtube.com/watch?v=abc123",
+        currentSourceUrl: null,
+      }),
+    ).toBe(true);
+    expect(
+      shouldIgnoreTransientPanelTabState({
+        nextTabUrl: null,
+        activeTabUrl: null,
+        currentSourceUrl: "https://www.youtube.com/watch?v=abc123",
+      }),
+    ).toBe(true);
+    expect(
+      shouldIgnoreTransientPanelTabState({
+        nextTabUrl: "https://www.youtube.com/watch?v=abc123",
+        activeTabUrl: "https://www.youtube.com/watch?v=abc123",
+        currentSourceUrl: null,
+      }),
+    ).toBe(false);
   });
 });

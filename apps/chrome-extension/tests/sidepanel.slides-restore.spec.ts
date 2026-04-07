@@ -123,7 +123,6 @@ test("sidepanel resumes slides when returning to a tab", async ({
         tokenPresent: true,
       },
     });
-
     await sendBgMessage(harness, { type: "ui:state", state: tabAState });
     await sendBgMessage(harness, { type: "ui:state", state: tabBState });
     await expect.poll(async () => (await getPanelSlideDescriptions(page)).length).toBe(0);
@@ -424,7 +423,6 @@ test("sidepanel starts pending slides after returning to a tab with seeded place
         tokenPresent: true,
       },
     });
-
     await sendBgMessage(harness, { type: "ui:state", state: tabAState });
     await expect(page.locator("#title")).toHaveText("Alpha Video");
     await sendBgMessage(harness, {

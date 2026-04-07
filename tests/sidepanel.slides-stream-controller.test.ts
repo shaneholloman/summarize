@@ -193,6 +193,30 @@ describe("sidepanel slides stream controller", () => {
     expect(controller.isStreaming()).toBe(false);
   });
 
+  it("does not fetch if aborted before token lookup resolves", async () => {
+    let fetched = false;
+    let releaseToken: ((value: string) => void) | null = null;
+    const tokenPromise = new Promise<string>((resolve) => {
+      releaseToken = resolve;
+    });
+    const controller = createSlidesStreamController({
+      getToken: async () => await tokenPromise,
+      onSlides: () => {},
+      fetchImpl: async () => {
+        fetched = true;
+        return new Response(streamFromEvents([{ event: "done", data: {} }]), { status: 200 });
+      },
+    });
+
+    const startPromise = controller.start("run-1");
+    controller.abort();
+    releaseToken?.("token");
+    await startPromise;
+
+    expect(fetched).toBe(false);
+    expect(controller.isStreaming()).toBe(false);
+  });
+
   it("reports errors when the server returns a non-ok response", async () => {
     const errors: string[] = [];
     const controller = createSlidesStreamController({
