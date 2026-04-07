@@ -110,7 +110,7 @@ async function tryGroqCurlFallback({
             reject(error);
             return;
           }
-          resolve(typeof stdoutText === "string" ? stdoutText : stdoutText.toString());
+          resolve(String(stdoutText ?? ""));
         },
       ),
     );
