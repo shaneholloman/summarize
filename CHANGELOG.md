@@ -1,9 +1,10 @@
 # Changelog
 
-## 0.14.0 - UNRELEASED
+## 0.14.0 - 2026-04-26
 
 ### Features
 
+- Models: add built-in `gpt-fast` / `fast` presets that run Codex with GPT-5.5 Fast mode via `service_tier="fast"`, including daemon and Chrome extension model pickers.
 - Chrome extension: add a background extractor router with Reddit thread `.json` extraction and diagnostics while preserving media URL hard-switch behavior (#207, fixes #174, thanks @solomonneas).
 - CLI extraction: support `--extract` for local PDF files through the existing markitdown preprocessing path, without requiring an LLM (#203, thanks @mvance).
 
@@ -12,11 +13,9 @@
 - CLI auto models: include config-provided environment values when selecting `auto` candidates, so API keys in `~/.summarize/config.json` are honored for URL summaries (#206, fixes #205, thanks @kaihendry and @solomonneas).
 - Chrome extension: skip always-on content scripts on Facebook, Instagram, and Meta CDN pages to avoid site compatibility issues (#208, fixes #106, thanks @solomonneas).
 
-## 0.13.2 - 2026-04-26
+### Maintenance
 
-### Features
-
-- Models: add built-in `gpt-fast` / `fast` presets that run Codex with GPT-5.5 Fast mode via `service_tier="fast"`, including daemon and Chrome extension model pickers.
+- Dependencies: refresh direct and transitive packages to the latest compatible versions, including `es-toolkit` 1.46.0.
 
 ## 0.13.1 - 2026-04-22
 
