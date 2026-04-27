@@ -91,7 +91,7 @@ More:
 
 ### Install
 
-Requires Node 22+.
+Requires Node 24+.
 
 - npx (no install):
 

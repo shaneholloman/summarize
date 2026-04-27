@@ -13,7 +13,7 @@ Lightweight, CLI-only SQLite cache. Single DB file.
 - Avoid repeated transcripts/extractions/summaries.
 - No file sprawl; bounded disk usage.
 - Safe defaults; easy opt-out.
-- Native SQLite only (Node 22 + Bun).
+- Native SQLite only (Node 24 + Bun).
 
 ## Storage
 
