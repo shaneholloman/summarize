@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   daemonConfigPrimaryToken,
   daemonConfigTokens,
@@ -172,5 +172,44 @@ describe("daemon config", () => {
       SUMMARIZE_ONNX_PARAKEET_CMD: "run-parakeet {input}",
       SUMMARIZE_ONNX_CANARY_CMD: "run-canary {input}",
     });
+  });
+
+  it("writes daemon config with private permissions", async () => {
+    if (process.platform === "win32") return;
+
+    const home = mkdtempSync(path.join(tmpdir(), "summarize-daemon-config-"));
+    const env = { HOME: home };
+    const configPath = resolveDaemonConfigPath(env);
+    const configDir = path.dirname(configPath);
+
+    await fs.mkdir(configDir, { recursive: true, mode: 0o755 });
+    await fs.writeFile(configPath, "{}", { encoding: "utf8", mode: 0o644 });
+    await fs.chmod(configDir, 0o755);
+    await fs.chmod(configPath, 0o644);
+
+    let modeDuringWrite: number | null = null;
+    const originalWriteFile = fs.writeFile;
+    const writeFileSpy = vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
+      modeDuringWrite = (await fs.stat(configPath)).mode & 0o777;
+      return await originalWriteFile(...args);
+    });
+
+    const writtenPath = await writeDaemonConfig({
+      env,
+      config: {
+        token: "1234567890abcdef",
+        tokens: ["1234567890abcdef"],
+        port: 8787,
+        env: { OPENAI_API_KEY: "private-key" },
+        installedAt: "2025-12-27T00:00:00.000Z",
+      },
+    });
+
+    writeFileSpy.mockRestore();
+
+    expect(writtenPath).toBe(configPath);
+    expect(modeDuringWrite).toBe(0o600);
+    expect((await fs.stat(configDir)).mode & 0o777).toBe(0o700);
+    expect((await fs.stat(writtenPath)).mode & 0o777).toBe(0o600);
   });
 });
