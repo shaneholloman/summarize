@@ -920,6 +920,55 @@ describe("llm generate/stream", () => {
     }
   });
 
+  it("does not forward OpenAI-only request options to GitHub Models", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(_input)).toBe("https://models.github.ai/inference/chat/completions");
+      const body = JSON.parse(String(init?.body)) as {
+        model: string;
+        reasoning_effort?: string;
+        service_tier?: string;
+        verbosity?: string;
+      };
+      expect(body.model).toBe("openai/gpt-4.1");
+      expect(body).not.toHaveProperty("reasoning_effort");
+      expect(body).not.toHaveProperty("service_tier");
+      expect(body).not.toHaveProperty("verbosity");
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { role: "assistant", content: "ok from github models" } }],
+          usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    try {
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await generateTextWithModelId({
+        modelId: "github-copilot/gpt-4.1",
+        apiKeys: {
+          openaiApiKey: "gh-token",
+          openrouterApiKey: null,
+          xaiApiKey: null,
+          googleApiKey: null,
+          anthropicApiKey: null,
+        },
+        prompt: { userText: "hi" },
+        timeoutMs: 2000,
+        fetchImpl: fetchMock as typeof fetch,
+        requestOptions: {
+          serviceTier: "fast",
+          reasoningEffort: "medium",
+          textVerbosity: "medium",
+        },
+      });
+
+      expect(result.text).toBe("ok from github models");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("omits temperature for GitHub Models GPT-5-family ids", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as {

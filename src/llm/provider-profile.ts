@@ -237,7 +237,6 @@ export function resolveOpenAiCompatibleClientConfigForProvider({
       useChatCompletions: true,
       isOpenRouter: false,
       extraHeaders: buildGitHubModelsHeaders(),
-      ...(requestOptions ? { requestOptions } : {}),
     };
   }
 
