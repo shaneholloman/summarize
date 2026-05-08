@@ -38,6 +38,7 @@ describe("llm generate/stream", () => {
   const originalBaseUrl = process.env.OPENAI_BASE_URL;
 
   afterEach(() => {
+    vi.useRealTimers();
     mocks.completeSimple.mockClear();
     mocks.streamSimple.mockClear();
     process.env.OPENAI_BASE_URL = originalBaseUrl;
@@ -1150,6 +1151,7 @@ describe("llm generate/stream", () => {
   });
 
   it("times out when a stream stalls before yielding", async () => {
+    vi.useFakeTimers();
     mocks.streamSimple.mockImplementationOnce(() => ({
       async *[Symbol.asyncIterator]() {
         await new Promise(() => {});
@@ -1172,10 +1174,13 @@ describe("llm generate/stream", () => {
     });
     const iterator = result.textStream[Symbol.asyncIterator]();
     const nextPromise = iterator.next();
-    await expect(nextPromise).rejects.toThrow(/timed out/i);
-  }, 250);
+    const rejection = expect(nextPromise).rejects.toThrow(/timed out/i);
+    await vi.advanceTimersByTimeAsync(5);
+    await rejection;
+  });
 
   it("resolves stream usage as null when stream.result() never settles", async () => {
+    vi.useFakeTimers();
     const finalMessage = makeAssistantMessage({ text: "ok" });
     mocks.streamSimple.mockImplementationOnce(() => ({
       async *[Symbol.asyncIterator]() {
@@ -1214,6 +1219,7 @@ describe("llm generate/stream", () => {
     let streamed = "";
     for await (const delta of result.textStream) streamed += delta;
     expect(streamed).toBe("ok");
+    await vi.advanceTimersByTimeAsync(20);
     await expect(result.usage).resolves.toBeNull();
   });
 });
