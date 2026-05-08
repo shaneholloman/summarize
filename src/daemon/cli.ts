@@ -64,6 +64,14 @@ function hasArg(argv: string[], name: string): boolean {
   return argv.includes(name) || argv.some((a) => a.startsWith(`${name}=`));
 }
 
+function readPortArg(argv: string[]): number | null {
+  const portRaw = readArgValue(argv, "--port");
+  if (!portRaw) return null;
+  const port = Number(portRaw);
+  if (!Number.isFinite(port) || port <= 0 || port >= 65535) throw new Error("Invalid --port");
+  return Math.floor(port);
+}
+
 type DaemonServiceInstallArgs = {
   env: Record<string, string | undefined>;
   stdout: NodeJS.WritableStream;
@@ -389,9 +397,7 @@ export async function handleDaemonRequest({
   if (sub === "install") {
     const token = readArgValue(normalizedArgv, "--token");
     if (!token) throw new Error("Missing --token");
-    const portRaw = readArgValue(normalizedArgv, "--port");
-    const port = portRaw ? Number(portRaw) : DAEMON_PORT_DEFAULT;
-    if (!Number.isFinite(port) || port <= 0 || port >= 65535) throw new Error("Invalid --port");
+    const port = readPortArg(normalizedArgv) ?? DAEMON_PORT_DEFAULT;
     const dev = hasArg(normalizedArgv, "--dev");
 
     const envSnapshot = buildEnvSnapshotFromEnv(envForRun);
@@ -600,12 +606,32 @@ export async function handleDaemonRequest({
   }
 
   if (sub === "run") {
-    const cfg = await readDaemonConfig({ env: envForRun });
-    if (!cfg) {
+    const existingConfig = await readDaemonConfig({ env: envForRun });
+    const tokenOverride = readArgValue(normalizedArgv, "--token")?.trim() || null;
+    const port = readPortArg(normalizedArgv) ?? existingConfig?.port ?? DAEMON_PORT_DEFAULT;
+    if (!existingConfig && !tokenOverride) {
       stderr.write("Missing ~/.summarize/daemon.json\n");
       stderr.write("Run: summarize daemon install --token <token>\n");
+      stderr.write("For a foreground dev run, pass --token <token>.\n");
       throw new Error("Daemon not configured");
     }
+    const cfg = existingConfig
+      ? {
+          ...existingConfig,
+          token: tokenOverride ?? daemonConfigPrimaryToken(existingConfig),
+          tokens: tokenOverride
+            ? Array.from(new Set([...daemonConfigTokens(existingConfig), tokenOverride]))
+            : daemonConfigTokens(existingConfig),
+          port,
+        }
+      : {
+          version: 2 as const,
+          token: tokenOverride!,
+          tokens: [tokenOverride!],
+          port,
+          env: buildEnvSnapshotFromEnv(envForRun),
+          installedAt: new Date().toISOString(),
+        };
     const mergedEnv = mergeDaemonEnv({ envForRun, snapshot: cfg.env });
     // Apply snapshot env to process.env so child processes (yt-dlp, ffmpeg,
     // deno, tesseract) inherit the correct PATH and tool config under

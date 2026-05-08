@@ -147,19 +147,91 @@ describe("daemon cli", () => {
         OPENAI_API_KEY: "from-snapshot",
       },
       fetchImpl: fetch,
-      config: {
+      config: expect.objectContaining({
         token: "test-token",
+        tokens: ["test-token"],
         port: 8787,
         env: {
           PATH: "/opt/homebrew/bin:/usr/bin:/bin",
           OPENAI_API_KEY: "from-snapshot",
         },
-      },
+      }),
     });
 
     expect(process.env.PATH).toBe("/opt/homebrew/bin:/usr/bin:/bin");
     expect(process.env.OPENAI_API_KEY).toBe("from-snapshot");
     expect(process.env.HOME).toBe("/tmp/original-home");
+  });
+
+  it("supports foreground run with explicit token and port without installed config", async () => {
+    mocks.readDaemonConfig.mockResolvedValueOnce(null);
+    mocks.runDaemonServer.mockResolvedValueOnce(undefined);
+
+    const envForRun = {
+      HOME: "/Users/peter",
+      PATH: "/usr/bin:/bin",
+      OPENAI_API_KEY: "from-run",
+    };
+
+    const handled = await handleDaemonRequest({
+      normalizedArgv: ["daemon", "run", "--token", "dev-token-123456", "--port", "18787"],
+      envForRun,
+      fetchImpl: fetch,
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+    });
+
+    expect(handled).toBe(true);
+    expect(mocks.runDaemonServer).toHaveBeenCalledWith({
+      env: envForRun,
+      fetchImpl: fetch,
+      config: expect.objectContaining({
+        version: 2,
+        token: "dev-token-123456",
+        tokens: ["dev-token-123456"],
+        port: 18787,
+        env: expect.objectContaining({
+          PATH: "/usr/bin:/bin",
+          OPENAI_API_KEY: "from-run",
+        }),
+      }),
+    });
+  });
+
+  it("lets foreground run override port and add a temporary token", async () => {
+    mocks.readDaemonConfig.mockResolvedValueOnce({
+      version: 2,
+      token: "installed-token-123456",
+      tokens: ["installed-token-123456"],
+      port: 8787,
+      env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin" },
+      installedAt: "2026-01-01T00:00:00.000Z",
+    });
+    mocks.runDaemonServer.mockResolvedValueOnce(undefined);
+
+    const envForRun = { HOME: "/Users/peter", PATH: "/usr/bin:/bin" };
+
+    const handled = await handleDaemonRequest({
+      normalizedArgv: ["daemon", "run", "--token=dev-token-123456", "--port=18787"],
+      envForRun,
+      fetchImpl: fetch,
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+    });
+
+    expect(handled).toBe(true);
+    expect(mocks.runDaemonServer).toHaveBeenCalledWith({
+      env: {
+        HOME: "/Users/peter",
+        PATH: "/opt/homebrew/bin:/usr/bin:/bin",
+      },
+      fetchImpl: fetch,
+      config: expect.objectContaining({
+        token: "dev-token-123456",
+        tokens: ["installed-token-123456", "dev-token-123456"],
+        port: 18787,
+      }),
+    });
   });
 
   it("appends a new daemon token on install instead of replacing existing tokens", async () => {

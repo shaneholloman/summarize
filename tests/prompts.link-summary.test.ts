@@ -134,6 +134,7 @@ describe("buildLinkSummaryPrompt", () => {
       shares: [],
     });
 
+    expect(prompt).toContain("Mandatory timestamp section");
     expect(prompt).toContain("Key moments");
     expect(prompt).toContain("Start each bullet with a [mm:ss]");
   });

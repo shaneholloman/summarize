@@ -51,6 +51,7 @@ describe("buildUrlPrompt with transcript timestamps", () => {
       languageInstruction: null,
     });
 
+    expect(prompt).toContain("Mandatory timestamp section");
     expect(prompt).toContain("Key moments");
     expect(prompt).toContain("Start each bullet with a [mm:ss]");
     expect(prompt).toContain("do not prepend timestamps outside the Key moments section");

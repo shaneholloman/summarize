@@ -5,6 +5,8 @@ const KEY_MOMENTS_HEADING_RE = /^\s{0,3}(?:#{1,6}\s*)?Key moments\s*:?\s*$/i;
 const MARKDOWN_HEADING_RE = /^\s{0,3}#{1,6}\s+\S/;
 const KEY_MOMENT_LINE_RE =
   /^\s*(?:[-*+]\s+)?(?:\[(\d{1,2}:\d{2}(?::\d{2})?)\]|(\d{1,2}:\d{2}(?::\d{2})?))(?=\s|[-:–—])/;
+const SMALL_OVERSHOOT_TOLERANCE_SECONDS = 5;
+const FALLBACK_KEY_MOMENT_COUNT = 3;
 
 function parseTimestampSeconds(value: string): number | null {
   const parts = value.split(":").map((item) => Number(item));
@@ -76,6 +78,63 @@ function readLeadingKeyMomentSeconds(line: string): number | null {
   return raw ? parseTimestampSeconds(raw) : null;
 }
 
+function clampLeadingKeyMomentTimestamp(line: string, maxSeconds: number): string {
+  const match = line.match(KEY_MOMENT_LINE_RE);
+  if (!match) return line;
+  const raw = match?.[1] ?? match?.[2] ?? null;
+  if (!raw) return line;
+  const replacement = formatTimestamp(maxSeconds);
+  return line.replace(match[1] ? `[${raw}]` : raw, match[1] ? `[${replacement}]` : replacement);
+}
+
+function hasKeyMomentsSection(markdown: string): boolean {
+  return markdown.split("\n").some((line) => KEY_MOMENTS_HEADING_RE.test(line.trim()));
+}
+
+function cleanTranscriptMomentText(value: string): string {
+  const cleaned = value.replace(/\s+/g, " ").replace(/^\W+/, "").trim();
+  if (cleaned.length <= 140) return cleaned;
+  const truncated = cleaned
+    .slice(0, 140)
+    .replace(/\s+\S*$/, "")
+    .trim();
+  return truncated.length > 0 ? `${truncated}...` : "";
+}
+
+function readTimedTranscriptMoments({
+  extracted,
+  maxSeconds,
+}: {
+  extracted: Pick<ExtractedLinkContent, "transcriptTimedText">;
+  maxSeconds: number;
+}): { seconds: number; text: string }[] {
+  const moments: { seconds: number; text: string }[] = [];
+  for (const line of extracted.transcriptTimedText?.split("\n") ?? []) {
+    const match = line.trim().match(TIMED_TRANSCRIPT_LINE_RE);
+    if (!match) continue;
+    const seconds = parseTimestampSeconds(match[1] ?? "");
+    if (seconds == null || seconds > maxSeconds) continue;
+    const text = cleanTranscriptMomentText(line.trim().slice(match[0].length));
+    if (!text) continue;
+    moments.push({ seconds, text });
+  }
+  return moments;
+}
+
+function pickFallbackKeyMoments(
+  moments: { seconds: number; text: string }[],
+): { seconds: number; text: string }[] {
+  if (moments.length <= FALLBACK_KEY_MOMENT_COUNT) return moments;
+  const indexes = new Set<number>();
+  for (let i = 0; i < FALLBACK_KEY_MOMENT_COUNT; i += 1) {
+    indexes.add(Math.round((i * (moments.length - 1)) / (FALLBACK_KEY_MOMENT_COUNT - 1)));
+  }
+  return Array.from(indexes)
+    .sort((a, b) => a - b)
+    .map((index) => moments[index])
+    .filter((moment): moment is { seconds: number; text: string } => Boolean(moment));
+}
+
 export function buildSummaryTimestampLimitInstruction(
   extracted: Pick<
     ExtractedLinkContent,
@@ -101,9 +160,8 @@ export function resolveSummaryTimestampUpperBound(
       ? Math.floor(extracted.mediaDurationSeconds)
       : null;
 
-  if (transcriptMaxSeconds == null) return durationSeconds;
-  if (durationSeconds == null) return transcriptMaxSeconds;
-  return Math.max(transcriptMaxSeconds, durationSeconds);
+  if (durationSeconds != null) return durationSeconds;
+  return transcriptMaxSeconds;
 }
 
 export function shouldSanitizeSummaryKeyMoments({
@@ -150,7 +208,13 @@ export function sanitizeSummaryKeyMoments({
     let keptTimestampCount = 0;
     for (const sectionLine of lines.slice(index + 1, sectionEnd)) {
       const seconds = readLeadingKeyMomentSeconds(sectionLine);
-      if (seconds != null && seconds > maxSeconds) continue;
+      if (seconds != null && seconds > maxSeconds) {
+        if (seconds - maxSeconds <= SMALL_OVERSHOOT_TOLERANCE_SECONDS) {
+          keptTimestampCount += 1;
+          keptLines.push(clampLeadingKeyMomentTimestamp(sectionLine, maxSeconds));
+        }
+        continue;
+      }
       if (seconds != null) keptTimestampCount += 1;
       keptLines.push(sectionLine);
     }
@@ -168,4 +232,23 @@ export function sanitizeSummaryKeyMoments({
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+export function ensureSummaryKeyMoments({
+  markdown,
+  extracted,
+  maxSeconds,
+}: {
+  markdown: string;
+  extracted: Pick<ExtractedLinkContent, "transcriptTimedText">;
+  maxSeconds: number | null;
+}): string {
+  if (!markdown || maxSeconds == null || hasKeyMomentsSection(markdown)) return markdown;
+  const moments = pickFallbackKeyMoments(readTimedTranscriptMoments({ extracted, maxSeconds }));
+  if (moments.length === 0) return markdown;
+  const section = [
+    "### Key moments",
+    ...moments.map((moment) => `- [${formatTimestamp(moment.seconds)}] ${moment.text}`),
+  ].join("\n");
+  return `${markdown.trim()}\n\n${section}`;
 }

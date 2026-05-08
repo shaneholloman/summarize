@@ -18,40 +18,40 @@ Goal: exercise URL + file inputs, extraction + LLM summary paths, multiple model
 ## Models (cheap/fast)
 
 - `openai/gpt-5-mini`
-- `google/gemini-3-flash`
+- `google/gemini-3-flash-preview`
 
 ## Matrix (20 cases)
 
 ### Websites (LLM summary, 10)
 
-1. Static HTML: `https://example.com` (model: gemini-3-flash)
+1. Static HTML: `https://example.com` (model: gemini-3-flash-preview)
 2. Wikipedia article: `https://en.wikipedia.org/wiki/Swift_(programming_language)` (model: gpt-5-mini)
-3. MDN doc: `https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/200` (model: gemini-3-flash)
+3. MDN doc: `https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/200` (model: gemini-3-flash-preview)
 4. Reuters article: `https://www.reuters.com/world/` (model: gpt-5-mini)
-5. BBC article: `https://www.bbc.com/news` (model: gemini-3-flash)
+5. BBC article: `https://www.bbc.com/news` (model: gemini-3-flash-preview)
 6. GitHub README: `https://github.com/vitejs/vite` (model: gpt-5-mini)
-7. Substack post: pick any public post (model: gemini-3-flash)
+7. Substack post: pick any public post (model: gemini-3-flash-preview)
 8. Medium post: pick any public post (model: gpt-5-mini)
-9. JS-heavy page: `https://vercel.com` (model: gemini-3-flash)
+9. JS-heavy page: `https://vercel.com` (model: gemini-3-flash-preview)
 10. 404 page: `https://example.com/does-not-exist` (model: gpt-5-mini)
 
 ### YouTube (LLM summary, 2)
 
-11. Captions available: pick a popular talk/interview (model: gemini-3-flash, `--youtube auto`)
+11. Captions available: pick a popular talk/interview (model: gemini-3-flash-preview, `--youtube auto`)
 12. No captions: pick a random channel upload w/o captions (model: gpt-5-mini, `--youtube auto`)
 
 ### Remote files (LLM summary, 4)
 
-13. PDF URL: any public PDF report (model: gemini-3-flash)
+13. PDF URL: any public PDF report (model: gemini-3-flash-preview)
 14. PNG URL: `https://upload.wikimedia.org/wikipedia/commons/7/70/Example.png` (model: gpt-5-mini)
-15. MP3 URL: any public MP3 sample (model: gemini-3-flash)
+15. MP3 URL: any public MP3 sample (model: gemini-3-flash-preview)
 16. CSV URL: any public CSV sample (model: gpt-5-mini)
 
 ### Local files (LLM summary, 4)
 
-17. `tests/fixtures/sample.txt` (create if missing) (model: gemini-3-flash)
+17. `tests/fixtures/sample.txt` (create if missing) (model: gemini-3-flash-preview)
 18. `tests/fixtures/sample.md` (create if missing) (model: gpt-5-mini)
-19. `tests/fixtures/sample.json` (create if missing) (model: gemini-3-flash)
+19. `tests/fixtures/sample.json` (create if missing) (model: gemini-3-flash-preview)
 20. `tests/fixtures/sample.png` (create if missing; use a real PNG, not 1x1) (model: gpt-5-mini)
 
 ## Commands (template)
