@@ -46,6 +46,42 @@ describe("cli main wiring", async () => {
     expect(stderrText.trim()).toBe("boom");
   });
 
+  it("uses silent interrupt exit codes without printing noise", async () => {
+    runCliMock
+      .mockReset()
+      .mockRejectedValue(
+        Object.assign(new Error("Interrupted by SIGINT"), { exitCode: 130, silent: true }),
+      );
+
+    let stderrText = "";
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        stderrText += chunk.toString();
+        callback();
+      },
+    });
+
+    let exitCode: number | null = null;
+    await runCliMain({
+      argv: [],
+      env: {},
+      fetch: globalThis.fetch.bind(globalThis),
+      stdout: new Writable({
+        write(_c, _e, cb) {
+          cb();
+        },
+      }),
+      stderr,
+      exit: () => {},
+      setExitCode: (code) => {
+        exitCode = code;
+      },
+    });
+
+    expect(exitCode).toBe(130);
+    expect(stderrText).toBe("");
+  });
+
   it("strips ANSI control sequences from non-verbose errors", async () => {
     runCliMock
       .mockReset()

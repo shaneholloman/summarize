@@ -115,7 +115,7 @@ export function startSpinner({
     // Match Sweetistics CLI vibe; keep it clean.
     spinner: "dots12",
     color: color ?? "cyan",
-    discardStdin: true,
+    discardStdin: false,
   }).start();
 
   return { stop, clear, pause, refresh, resume, stopAndClear, setText };

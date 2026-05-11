@@ -45,6 +45,7 @@ describe("tty spinner", () => {
     const spinner = startSpinner({ text: "Loading", enabled: true, stream });
     spinner.stop();
 
+    expect(oraMock).toHaveBeenCalledWith(expect.objectContaining({ discardStdin: false }));
     expect(stopSpy).not.toHaveBeenCalled();
   });
 

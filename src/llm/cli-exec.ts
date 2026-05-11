@@ -7,6 +7,19 @@ type CliExecError = ExecFileException & {
   signal?: NodeJS.Signals | null;
 };
 
+export class CliInterruptedError extends Error {
+  readonly exitCode: number;
+  readonly silent = true;
+  readonly signal: NodeJS.Signals;
+
+  constructor(signal: NodeJS.Signals) {
+    super(`Interrupted by ${signal}`);
+    this.name = "CliInterruptedError";
+    this.signal = signal;
+    this.exitCode = signal === "SIGTERM" ? 143 : 130;
+  }
+}
+
 function toUtf8String(value: string | Buffer): string {
   return typeof value === "string" ? value : value.toString("utf8");
 }
@@ -72,7 +85,29 @@ export async function execCliWithInput({
   cwd?: string;
 }): Promise<{ stdout: string; stderr: string }> {
   return await new Promise((resolve, reject) => {
-    const child = execFileImpl(
+    let interruptedSignal: NodeJS.Signals | null = null;
+    let child: ReturnType<ExecFileFn> | null = null;
+    const forwardSignal = (signal: NodeJS.Signals) => {
+      if (interruptedSignal) return;
+      interruptedSignal = signal;
+      try {
+        child?.kill(signal);
+      } catch {
+        // Process may have already exited between signal delivery and forwarding.
+      }
+    };
+    const handleSigint = () => forwardSignal("SIGINT");
+    const handleSigterm = () => forwardSignal("SIGTERM");
+    const cleanupSignalHandlers = () => {
+      process.removeListener("SIGINT", handleSigint);
+      process.removeListener("SIGTERM", handleSigterm);
+    };
+
+    // Run before progress UI exit handlers so active CLI backends don't survive Ctrl+C.
+    process.prependOnceListener("SIGINT", handleSigint);
+    process.prependOnceListener("SIGTERM", handleSigterm);
+
+    child = execFileImpl(
       cmd,
       args,
       {
@@ -82,7 +117,12 @@ export async function execCliWithInput({
         maxBuffer: 50 * 1024 * 1024,
       },
       (error, stdout, stderr) => {
+        cleanupSignalHandlers();
         const stderrText = toUtf8String(stderr);
+        if (interruptedSignal) {
+          reject(new CliInterruptedError(interruptedSignal));
+          return;
+        }
         if (error) {
           if (isExecTimeoutError(error)) {
             const timeoutMessage =
@@ -105,6 +145,7 @@ export async function execCliWithInput({
         resolve({ stdout: toUtf8String(stdout), stderr: stderrText });
       },
     );
+
     if (child.stdin) {
       child.stdin.write(input);
       child.stdin.end();

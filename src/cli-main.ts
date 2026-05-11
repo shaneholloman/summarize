@@ -149,7 +149,12 @@ export async function runCliMain({
 
     const message =
       error instanceof Error ? error.message : error ? String(error) : "Unknown error";
+    const exitCode = (error as { exitCode?: unknown } | null)?.exitCode;
+    if ((error as { silent?: unknown } | null)?.silent === true && typeof exitCode === "number") {
+      setExitCode(exitCode);
+      return;
+    }
     stderr.write(`${stripAnsi(message)}\n`);
-    setExitCode(1);
+    setExitCode(typeof exitCode === "number" ? exitCode : 1);
   }
 }
