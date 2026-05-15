@@ -3,6 +3,7 @@ import type { MediaCache } from "../content/index.js";
 import { createAssetSummaryContext, type SummarizeAssetArgs } from "./flows/asset/summary.js";
 import { summarizeAsset as summarizeAssetFlow } from "./flows/asset/summary.js";
 import { createUrlFlowContext, type UrlFlowContext } from "./flows/url/types.js";
+import type { PerfTrace } from "./perf-trace.js";
 
 type SummarizeMediaFile = typeof import("./flows/asset/media.js").summarizeMediaFile;
 
@@ -21,6 +22,7 @@ export function createRunnerFlowContexts(options: {
   clearProgressIfCurrent: UrlFlowContext["hooks"]["clearProgressIfCurrent"];
   buildReport: UrlFlowContext["hooks"]["buildReport"];
   estimateCostUsd: UrlFlowContext["hooks"]["estimateCostUsd"];
+  perfTrace?: PerfTrace | null;
 }) {
   const {
     summarizeMediaFileImpl,
@@ -37,6 +39,7 @@ export function createRunnerFlowContexts(options: {
     clearProgressIfCurrent,
     buildReport,
     estimateCostUsd,
+    perfTrace = null,
   } = options;
 
   const assetSummaryContext = createAssetSummaryContext({
@@ -146,6 +149,7 @@ export function createRunnerFlowContexts(options: {
       model,
       cache: cacheState,
       mediaCache,
+      perfTrace,
       runtimeHooks: {
         setTranscriptionCost,
         summarizeAsset,

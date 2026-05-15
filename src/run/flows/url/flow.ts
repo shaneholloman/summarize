@@ -36,6 +36,7 @@ export async function runUrlFlow({
   }
 
   const { io, flags, model, cache: cacheState, hooks } = ctx;
+  ctx.perfTrace?.mark("url:start");
   const theme = createThemeRenderer({
     themeName: resolveThemeNameFromSources({ env: io.envForRun.SUMMARIZE_THEME }),
     enabled: flags.verboseColor,
@@ -127,6 +128,7 @@ export async function runUrlFlow({
   let backgroundSlidesPromise: Promise<SlideExtractionResult | null> | null = null;
   try {
     let extracted = await extractionSession.fetchInitialExtract(url);
+    ctx.perfTrace?.mark("url:extracted");
     let extractionUi = deriveExtractionUi(extracted);
 
     const formatSummaryProgress = (modelId?: string | null) => {
@@ -245,6 +247,7 @@ export async function runUrlFlow({
       languageInstruction: flags.languageInstruction ?? null,
       slides: slidesForPrompt ?? slidesSession.getSlidesExtracted() ?? null,
     });
+    ctx.perfTrace?.mark("url:prompt");
 
     // Whisper transcription costs need to be folded into the finish line totals.
     const transcriptionCostUsd = estimateWhisperTranscriptionCostUsd({
@@ -320,6 +323,7 @@ export async function runUrlFlow({
       slides: slidesSession.getSlidesExtracted() ?? slidesForPrompt ?? null,
       slidesOutput: slidesSession.slidesOutput,
     });
+    ctx.perfTrace?.mark("url:summary-done");
     if (backgroundSlidesPromise) await backgroundSlidesPromise;
   } finally {
     if (backgroundSlidesPromise) {

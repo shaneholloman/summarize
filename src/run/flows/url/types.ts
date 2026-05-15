@@ -18,6 +18,7 @@ import type {
   SlideSettings,
   SlideSourceKind,
 } from "../../../slides/index.js";
+import type { PerfTrace } from "../../perf-trace.js";
 import type { createSummaryEngine } from "../../summary-engine.js";
 import type { SummarizeAssetArgs } from "../asset/summary.js";
 
@@ -211,16 +212,18 @@ export function createUrlFlowContext(options: {
   model: UrlFlowModel;
   cache: CacheState;
   mediaCache: MediaCache | null;
+  perfTrace?: PerfTrace | null;
   runtimeHooks: UrlFlowRuntimeHooks;
   eventHooks?: Partial<UrlFlowEventHooks>;
 }): UrlFlowContext {
-  const { io, flags, model, cache, mediaCache, runtimeHooks, eventHooks } = options;
+  const { io, flags, model, cache, mediaCache, perfTrace, runtimeHooks, eventHooks } = options;
   return {
     io,
     flags,
     model,
     cache,
     mediaCache,
+    perfTrace: perfTrace ?? null,
     hooks: createUrlFlowHooks({ runtime: runtimeHooks, events: eventHooks }),
   };
 }
@@ -236,5 +239,6 @@ export type UrlFlowContext = {
   model: UrlFlowModel;
   cache: CacheState;
   mediaCache: MediaCache | null;
+  perfTrace?: PerfTrace | null;
   hooks: UrlFlowHooks;
 };

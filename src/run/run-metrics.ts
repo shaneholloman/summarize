@@ -2,6 +2,7 @@ import { normalizeTokenUsage, tallyCosts } from "tokentally";
 import type { LlmCall, RunMetricsReport } from "../costs.js";
 import { buildRunMetricsReport } from "../costs.js";
 import {
+  loadCachedLiteLlmCatalog,
   loadLiteLlmCatalog,
   resolveLiteLlmMaxInputTokensForModelId,
   resolveLiteLlmMaxOutputTokensForModelId,
@@ -42,6 +43,7 @@ export function createRunMetrics({
   };
 
   let liteLlmCatalogPromise: ReturnType<typeof loadLiteLlmCatalog> | null = null;
+  let cachedLiteLlmCatalogPromise: ReturnType<typeof loadCachedLiteLlmCatalog> | null = null;
   const getLiteLlmCatalog = async () => {
     if (!liteLlmCatalogPromise) {
       liteLlmCatalogPromise = loadLiteLlmCatalog({
@@ -52,6 +54,12 @@ export function createRunMetrics({
     const result = await liteLlmCatalogPromise;
     return result.catalog;
   };
+  const getCachedLiteLlmCatalog = async () => {
+    if (!cachedLiteLlmCatalogPromise) {
+      cachedLiteLlmCatalogPromise = loadCachedLiteLlmCatalog({ env });
+    }
+    return cachedLiteLlmCatalogPromise;
+  };
 
   const capMaxOutputTokensForModel = async ({
     modelId,
@@ -60,7 +68,7 @@ export function createRunMetrics({
     modelId: string;
     requested: number;
   }): Promise<number> => {
-    const catalog = await getLiteLlmCatalog();
+    const catalog = await getCachedLiteLlmCatalog();
     if (!catalog) return requested;
     const limit = resolveLiteLlmMaxOutputTokensForModelId(catalog, modelId);
     if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
@@ -75,7 +83,7 @@ export function createRunMetrics({
   };
 
   const resolveMaxInputTokensForCall = async (modelId: string): Promise<number | null> => {
-    const catalog = await getLiteLlmCatalog();
+    const catalog = await getCachedLiteLlmCatalog();
     if (!catalog) return null;
     const limit = resolveLiteLlmMaxInputTokensForModelId(catalog, modelId);
     if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
@@ -126,7 +134,7 @@ export function createRunMetrics({
       return null;
     }
 
-    const catalog = await getLiteLlmCatalog();
+    const catalog = await getCachedLiteLlmCatalog();
     if (!catalog) {
       if (explicitCosts.length > 0 || hasExtra) return explicitTotal + extraTotal;
       return null;

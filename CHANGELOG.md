@@ -9,6 +9,7 @@
 
 ### Fixes
 
+- CLI performance: add opt-in startup/first-output tracing and avoid network LiteLLM catalog refreshes on fixed-model summary streaming and finish-line cost estimation.
 - Chrome extension slides: harden slide payload loading against malformed cache/stream data and clear stale thumbnails before retrying updated slide images.
 - Release gate: run `pnpm typecheck` during `pnpm check` so CI/release checks catch TypeScript errors.
 - Typecheck: include `packages/core` in the root typecheck script so core library errors fail the gate.

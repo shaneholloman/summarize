@@ -54,8 +54,8 @@ function writeLiteLlmCache(root: string) {
 
 async function runStreamedSummary(
   chunks: string[],
-  options?: { stdoutIsTty?: boolean },
-): Promise<string> {
+  options?: { perfTrace?: boolean; stdoutIsTty?: boolean; writeLiteLlmCatalog?: boolean },
+): Promise<{ stderr: string; stdout: string }> {
   mocks.streamSimple.mockReset().mockImplementation(() =>
     makeTextDeltaStream(
       chunks,
@@ -67,7 +67,9 @@ async function runStreamedSummary(
   );
 
   const root = mkdtempSync(join(tmpdir(), "summarize-stream-merge-"));
-  writeLiteLlmCache(root);
+  if (options?.writeLiteLlmCatalog !== false) {
+    writeLiteLlmCache(root);
+  }
   const globalFetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
     throw new Error("unexpected LiteLLM catalog fetch");
   });
@@ -107,6 +109,7 @@ async function runStreamedSummary(
         env: {
           HOME: root,
           OPENAI_API_KEY: "test",
+          ...(options?.perfTrace ? { SUMMARIZE_PERF_TRACE: "1" } : {}),
           ...(options?.stdoutIsTty ? { NO_COLOR: "1" } : {}),
         },
         fetch: fetchMock as unknown as typeof fetch,
@@ -118,7 +121,7 @@ async function runStreamedSummary(
     globalFetchSpy.mockRestore();
   }
 
-  return stdout.getText();
+  return { stdout: stdout.getText(), stderr: stderr.getText() };
 }
 
 describe("cli stream chunk merge", () => {
@@ -127,39 +130,59 @@ describe("cli stream chunk merge", () => {
   });
 
   it("avoids duplication when chunks are cumulative buffers", async () => {
-    const out = await runStreamedSummary(["Hello", "Hello world", "Hello world!"]);
+    const { stdout: out } = await runStreamedSummary(["Hello", "Hello world", "Hello world!"]);
     expect(out).toBe("Hello world!\n");
   }, 20_000);
 
   it("keeps delta chunks unchanged", async () => {
-    const out = await runStreamedSummary(["Hello ", "world", "!"]);
+    const { stdout: out } = await runStreamedSummary(["Hello ", "world", "!"]);
     expect(out).toBe("Hello world!\n");
   }, 20_000);
 
   it("handles mixed delta then cumulative chunks", async () => {
-    const out = await runStreamedSummary(["Hello ", "world", "Hello world!!"]);
+    const { stdout: out } = await runStreamedSummary(["Hello ", "world", "Hello world!!"]);
     expect(out).toBe("Hello world!!\n");
   }, 20_000);
 
   it("treats near-prefix cumulative chunks as replacements", async () => {
-    const out = await runStreamedSummary(["Hello world.", "Hello world!"]);
+    const { stdout: out } = await runStreamedSummary(["Hello world.", "Hello world!"]);
     expect(out).toBe("Hello world!\n");
   }, 20_000);
 
   it("ignores regressions where a later chunk is a shorter prefix", async () => {
-    const out = await runStreamedSummary(["Hello world", "Hello"]);
+    const { stdout: out } = await runStreamedSummary(["Hello world", "Hello"]);
     expect(out).toBe("Hello world\n");
   }, 20_000);
 
   it("merges overlapping suffix/prefix chunks without duplication", async () => {
-    const out = await runStreamedSummary(["Hello world", "world!"]);
+    const { stdout: out } = await runStreamedSummary(["Hello world", "world!"]);
     expect(out).toBe("Hello world!\n");
   }, 20_000);
 
   it("treats near-prefix edits as replacements (prefix threshold)", async () => {
     const prev = "abcdefghijklmnopqrst";
     const next = "abcdefghijklmnopqrsu";
-    const out = await runStreamedSummary([prev, next]);
+    const { stdout: out } = await runStreamedSummary([prev, next]);
     expect(out).toBe(`${next}\n`);
+  }, 20_000);
+
+  it("does not fetch the LiteLLM catalog on the fixed-model stream path when cache is missing", async () => {
+    const { stdout: out } = await runStreamedSummary(["Hello"], {
+      writeLiteLlmCatalog: false,
+    });
+
+    expect(out).toBe("Hello\n");
+  }, 20_000);
+
+  it("prints an opt-in performance trace with first output timing", async () => {
+    const { stderr, stdout } = await runStreamedSummary(["Hello"], {
+      perfTrace: true,
+      writeLiteLlmCatalog: false,
+    });
+
+    expect(stdout).toBe("Hello\n");
+    expect(stderr).toContain("[summarize:perf]");
+    expect(stderr).toContain("summary:first-delta");
+    expect(stderr).toContain("stdout:first-write");
   }, 20_000);
 });

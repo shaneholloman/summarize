@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  loadCachedLiteLlmCatalog,
   loadLiteLlmCatalog,
   resolveLiteLlmMaxInputTokensForModelId,
   resolveLiteLlmMaxOutputTokensForModelId,
@@ -203,6 +204,30 @@ describe("LiteLLM pricing catalog", () => {
     expect(result.source).toBe("cache");
     expect(fetchMock).toHaveBeenCalledTimes(0);
     expect(resolveLiteLlmPricingForModelId(result.catalog ?? {}, "openai/gpt-5.2")).toEqual({
+      inputUsdPerToken: 0.1,
+      outputUsdPerToken: 0.2,
+    });
+  });
+
+  it("loads cached catalog without revalidating stale metadata", async () => {
+    const root = mkdtempSync(join(tmpdir(), "summarize-litellm-"));
+    const cacheDir = join(root, ".summarize", "cache");
+    mkdirSync(cacheDir, { recursive: true });
+
+    writeFileSync(
+      join(cacheDir, "litellm-model_prices_and_context_window.json"),
+      JSON.stringify({ "gpt-5.2": { input_cost_per_token: 0.1, output_cost_per_token: 0.2 } }),
+      "utf8",
+    );
+    writeFileSync(
+      join(cacheDir, "litellm-model_prices_and_context_window.meta.json"),
+      JSON.stringify({ fetchedAtMs: 1 }),
+      "utf8",
+    );
+
+    const catalog = await loadCachedLiteLlmCatalog({ env: { HOME: root } });
+
+    expect(resolveLiteLlmPricingForModelId(catalog ?? {}, "openai/gpt-5.2")).toEqual({
       inputUsdPerToken: 0.1,
       outputUsdPerToken: 0.2,
     });
