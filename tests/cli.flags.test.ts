@@ -9,6 +9,7 @@ import {
   parseMaxOutputTokensArg,
   parseMetricsMode,
   parsePreprocessMode,
+  parseRetriesArg,
   parseStreamMode,
   parseYoutubeMode,
 } from "../src/flags.js";
@@ -103,5 +104,14 @@ describe("cli flag parsing", () => {
     expect(parseMaxExtractCharactersArg("15000")).toBe(15000);
     expect(() => parseMaxExtractCharactersArg("5")).toThrow(/max-extract-characters/);
     expect(() => parseMaxExtractCharactersArg("nope")).toThrow(/max-extract-characters/);
+  });
+
+  it("parses --retries", () => {
+    expect(parseRetriesArg("0")).toBe(0);
+    expect(parseRetriesArg("3")).toBe(3);
+    expect(() => parseRetriesArg("1e0")).toThrow(/Unsupported --retries/);
+    expect(() => parseRetriesArg("0x2")).toThrow(/Unsupported --retries/);
+    expect(() => parseRetriesArg("2.0")).toThrow(/Unsupported --retries/);
+    expect(() => parseRetriesArg("-1")).toThrow(/Unsupported --retries/);
   });
 });

@@ -25,6 +25,8 @@ const DEFAULT_OUTPUT_DIR = "slides";
 const DEFAULT_SCENE_THRESHOLD = 0.3;
 const DEFAULT_MAX_SLIDES = 6;
 const DEFAULT_MIN_DURATION_SECONDS = 2;
+const DECIMAL_INT_PATTERN = /^\d+$/;
+const DECIMAL_NUMBER_PATTERN = /^\d+(?:\.\d+)?$/;
 
 const parseBoolean = (raw: unknown): boolean | null => {
   if (typeof raw === "boolean") return raw;
@@ -39,6 +41,9 @@ const parseBoolean = (raw: unknown): boolean | null => {
 const parsePositiveInt = (raw: unknown, label: string, min = 1): number | null => {
   if (raw == null) return null;
   const value = typeof raw === "string" ? raw.trim() : raw;
+  if (typeof value === "string" && !DECIMAL_INT_PATTERN.test(value)) {
+    throw new Error(`Unsupported ${label}: ${String(raw)}`);
+  }
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric) || !Number.isInteger(numeric)) {
     throw new Error(`Unsupported ${label}: ${String(raw)}`);
@@ -56,6 +61,9 @@ const parseNumberInRange = (
 ): number | null => {
   if (raw == null) return null;
   const value = typeof raw === "string" ? raw.trim() : raw;
+  if (typeof value === "string" && !DECIMAL_NUMBER_PATTERN.test(value)) {
+    throw new Error(`Unsupported ${label}: ${String(raw)}`);
+  }
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) {
     throw new Error(`Unsupported ${label}: ${String(raw)}`);

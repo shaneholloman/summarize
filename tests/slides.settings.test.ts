@@ -53,8 +53,26 @@ describe("resolveSlideSettings", () => {
     expect(() => resolveSlideSettings({ slides: true, slidesMax: "0", cwd: "/tmp" })).toThrow(
       /slides-max/i,
     );
+    expect(() => resolveSlideSettings({ slides: true, slidesMax: "1e2", cwd: "/tmp" })).toThrow(
+      /slides-max/i,
+    );
+    expect(() => resolveSlideSettings({ slides: true, slidesMax: "0x10", cwd: "/tmp" })).toThrow(
+      /slides-max/i,
+    );
     expect(() =>
       resolveSlideSettings({ slides: true, slidesMinDuration: "-1", cwd: "/tmp" }),
     ).toThrow(/slides-min-duration/i);
+    expect(() =>
+      resolveSlideSettings({ slides: true, slidesMinDuration: "1e2", cwd: "/tmp" }),
+    ).toThrow(/slides-min-duration/i);
+  });
+
+  it("rejects non-decimal scene threshold", () => {
+    expect(() =>
+      resolveSlideSettings({ slides: true, slidesSceneThreshold: "0x1", cwd: "/tmp" }),
+    ).toThrow(/slides-scene-threshold/i);
+    expect(() =>
+      resolveSlideSettings({ slides: true, slidesSceneThreshold: "1e-1", cwd: "/tmp" }),
+    ).toThrow(/slides-scene-threshold/i);
   });
 });

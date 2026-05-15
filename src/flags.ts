@@ -188,6 +188,9 @@ export function parseRetriesArg(raw: string): number {
   if (!normalized) {
     throw new Error(`Unsupported --retries: ${raw}`);
   }
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(`Unsupported --retries: ${raw}`);
+  }
   const numeric = Number(normalized);
   if (!Number.isFinite(numeric) || !Number.isInteger(numeric)) {
     throw new Error(`Unsupported --retries: ${raw}`);
