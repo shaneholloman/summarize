@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- Release: align the release helper and docs with GitHub assets plus Homebrew/core verification instead of the retired tap flow.
+
 ## 0.15.2 - 2026-05-17
 
 ### Fixes

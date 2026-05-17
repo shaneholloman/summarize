@@ -15,7 +15,7 @@ summary: "Docs index for summarize behaviors and modes."
 - `docs/manual-tests.md` — manual end-to-end test checklist
 - `docs/model-auto.md` — automatic model selection (`--model auto`)
 - `docs/openai.md` — OpenAI model usage + flags
-- `docs/releasing.md` — release checklist + Homebrew tap update
+- `docs/releasing.md` — release checklist + Homebrew/core verify
 - `docs/smoketest.md` — 20-case smoke test plan
 - `docs/website.md` — normal websites (HTML extraction + Firecrawl fallback)
 - `docs/youtube.md` — YouTube transcript extraction (youtubei / captionTracks / Apify)
