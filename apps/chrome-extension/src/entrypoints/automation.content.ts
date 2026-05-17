@@ -366,6 +366,10 @@ export default defineContentScript({
   excludeMatches: META_SITE_EXCLUDE_MATCHES,
   runAt: "document_idle",
   main() {
+    const flag = "__summarize_automation_installed__";
+    if ((globalThis as unknown as Record<string, unknown>)[flag]) return;
+    (globalThis as unknown as Record<string, unknown>)[flag] = true;
+
     handleNativeInputBridge();
 
     chrome.runtime.onMessage.addListener(
