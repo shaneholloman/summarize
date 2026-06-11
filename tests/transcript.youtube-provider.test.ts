@@ -411,6 +411,41 @@ describe("YouTube transcript provider module", () => {
     );
   });
 
+  it("keeps the HTML duration fallback when player metadata lacks duration", async () => {
+    captions.fetchTranscriptFromCaptionTracks.mockResolvedValue({
+      text: "Creator caption",
+      segments: null,
+    });
+    captions.extractYoutubePlayerMetadata.mockReturnValue({
+      durationSeconds: null,
+      viewCount: 19_335,
+    });
+    captions.extractYoutubeDurationSeconds.mockReturnValue(1_872);
+
+    const result = await fetchTranscript(
+      {
+        url: "https://www.youtube.com/watch?v=abcdefghijk",
+        html: "<html></html>",
+        resourceKey: null,
+      },
+      {
+        ...baseOptions,
+        youtubeTranscriptMode: "no-auto",
+      },
+    );
+
+    expect(result.metadata).toEqual(
+      expect.objectContaining({
+        durationSeconds: 1_872,
+        sourceMetrics: expect.objectContaining({
+          videoId: "abcdefghijk",
+          viewCount: 19_335,
+        }),
+      }),
+    );
+    expect(captions.fetchYoutubePlayerMetadata).not.toHaveBeenCalled();
+  });
+
   it("uses yt-dlp duration when player duration is unavailable", async () => {
     captions.fetchTranscriptFromCaptionTracks.mockResolvedValue({
       text: "Creator caption",

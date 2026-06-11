@@ -102,10 +102,7 @@ export async function resolveDurationMetadata(args: {
       : Math.max(1, options.timeoutMs - (Date.now() - startedAt));
 
   const initialPlayerMetadata = extractYoutubePlayerMetadata(htmlText);
-  let durationSeconds =
-    initialPlayerMetadata === null
-      ? extractYoutubeDurationSeconds(htmlText)
-      : initialPlayerMetadata.durationSeconds;
+  let durationSeconds = extractYoutubeDurationSeconds(htmlText);
   let sourceMetrics =
     effectiveVideoId && initialPlayerMetadata
       ? {
