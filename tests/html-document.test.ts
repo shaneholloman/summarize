@@ -69,6 +69,24 @@ describe("HTML document adapter", () => {
     }
   });
 
+  it("normalizes HTML attribute names without changing foreign content", () => {
+    const parsed = parseHtmlDocument(
+      '<META PROPERTY="og:title" CONTENT="Uppercase title"><video SRC="first.mp4" src="second.mp4"></video><svg viewBox="0 0 1 1"></svg><math><csymbol definitionURL="urn:example"></csymbol></math>',
+    );
+    try {
+      expect(
+        parsed.document.head?.querySelector('meta[property="og:title"]')?.getAttribute("content"),
+      ).toBe("Uppercase title");
+      expect(parsed.document.body?.querySelector("video")?.getAttribute("src")).toBe("first.mp4");
+      expect(parsed.document.body?.querySelector("svg")?.hasAttribute("viewBox")).toBe(true);
+      expect(parsed.document.body?.querySelector("csymbol")?.hasAttribute("definitionURL")).toBe(
+        true,
+      );
+    } finally {
+      parsed.close();
+    }
+  });
+
   it("recognizes full documents after an XML declaration", () => {
     const parsed = parseHtmlDocument(
       '<?xml version="1.0"?><!doctype html><html><head><title>XHTML</title></head><body><p>Body</p></body></html>',

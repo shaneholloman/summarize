@@ -184,7 +184,7 @@ export function createUrlExtractionSession({
         });
         extracted = identified.extracted;
         cacheable = identified.cacheable;
-        if (identified.usage) {
+        if (identified.inferenceAttempted) {
           model.llmCalls.push({
             provider: "openai",
             model: flags.speakerIdentification.model,

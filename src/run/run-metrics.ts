@@ -28,6 +28,14 @@ export type RunMetrics = {
   setTranscriptionCost: (costUsd: number | null, label: string | null) => void;
 };
 
+function explicitCallCostUsd(call: LlmCall): number | null {
+  if (typeof call.costUsd === "number" && Number.isFinite(call.costUsd)) return call.costUsd;
+  return call.provider === "ollama" ||
+    (typeof call.model === "string" && /:free$/i.test(call.model.trim()))
+    ? 0
+    : null;
+}
+
 export function createRunMetrics({
   env,
   fetchImpl,
@@ -111,49 +119,56 @@ export function createRunMetrics({
     const hasExtra = extraCosts.length > 0;
 
     const explicitCosts = llmCalls
-      .map((call) =>
-        typeof call.costUsd === "number" && Number.isFinite(call.costUsd) ? call.costUsd : null,
-      )
+      .map((call) => explicitCallCostUsd(call))
       .filter((value): value is number => typeof value === "number");
     const explicitTotal =
       explicitCosts.length > 0 ? explicitCosts.reduce((sum, value) => sum + value, 0) : 0;
 
-    const calls = llmCalls
-      .filter((call) => !(typeof call.costUsd === "number" && Number.isFinite(call.costUsd)))
-      .map((call) => {
-        const promptTokens = call.usage?.promptTokens ?? null;
-        const completionTokens = call.usage?.completionTokens ?? null;
-        const hasTokens =
-          typeof promptTokens === "number" &&
-          Number.isFinite(promptTokens) &&
-          typeof completionTokens === "number" &&
-          Number.isFinite(completionTokens);
-        const usage = hasTokens
-          ? normalizeTokenUsage({
-              inputTokens: promptTokens,
-              outputTokens: completionTokens,
-              totalTokens: call.usage?.totalTokens ?? undefined,
-            })
-          : null;
-        return { model: call.model, usage };
-      });
+    const callsWithoutExplicitCost = llmCalls.filter((call) => explicitCallCostUsd(call) === null);
+    const hasUnknownLlmCost = callsWithoutExplicitCost.some((call) => {
+      const promptTokens = call.usage?.promptTokens ?? null;
+      const completionTokens = call.usage?.completionTokens ?? null;
+      return !(
+        typeof promptTokens === "number" &&
+        Number.isFinite(promptTokens) &&
+        typeof completionTokens === "number" &&
+        Number.isFinite(completionTokens)
+      );
+    });
+    if (hasUnknownLlmCost) return null;
+
+    const calls = callsWithoutExplicitCost.map((call) => {
+      const promptTokens = call.usage?.promptTokens ?? null;
+      const completionTokens = call.usage?.completionTokens ?? null;
+      const hasTokens =
+        typeof promptTokens === "number" &&
+        Number.isFinite(promptTokens) &&
+        typeof completionTokens === "number" &&
+        Number.isFinite(completionTokens);
+      const usage = hasTokens
+        ? normalizeTokenUsage({
+            inputTokens: promptTokens,
+            outputTokens: completionTokens,
+            totalTokens: call.usage?.totalTokens ?? undefined,
+          })
+        : null;
+      return { model: call.model, usage };
+    });
     if (calls.length === 0) {
       if (explicitCosts.length > 0 || hasExtra) return explicitTotal + extraTotal;
       return null;
     }
 
     const catalog = await getCachedLiteLlmCatalog();
-    if (!catalog) {
-      if (explicitCosts.length > 0 || hasExtra) return explicitTotal + extraTotal;
-      return null;
-    }
+    if (!catalog) return null;
     const result = await tallyCosts({
       calls,
       resolvePricing: (modelId) => resolveLiteLlmPricingForModelId(catalog, modelId),
     });
+    if (Object.values(result.byModel).some((row) => row.cost === null)) return null;
     const catalogTotal = result.total?.totalUsd ?? null;
-    if (catalogTotal === null && explicitCosts.length === 0 && !hasExtra) return null;
-    return (catalogTotal ?? 0) + explicitTotal + extraTotal;
+    if (catalogTotal === null) return null;
+    return catalogTotal + explicitTotal + extraTotal;
   };
 
   const buildReport = async () => {

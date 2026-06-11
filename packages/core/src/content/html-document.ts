@@ -27,6 +27,7 @@ export function parseHtmlDocument(html: string, url?: string): ParsedHtmlDocumen
   const pageUrl = url ? new URL(url) : null;
   const document = parseHTML(source, pageUrl ? { location: pageUrl } : undefined)
     .document as unknown as Document;
+  normalizeHtmlAttributeNames(document);
   normalizeDocumentStructure(document);
 
   if (pageUrl) {
@@ -53,6 +54,35 @@ export function parseHtmlDocument(html: string, url?: string): ParsedHtmlDocumen
     document,
     close: () => undefined,
   };
+}
+
+function normalizeHtmlAttributeNames(document: Document): void {
+  const mathMlElements = new WeakSet<Element>();
+  for (const element of document.querySelectorAll("*")) {
+    if (
+      element.tagName.toLowerCase() === "math" ||
+      (element.parentElement && mathMlElements.has(element.parentElement))
+    ) {
+      mathMlElements.add(element);
+    }
+    if (element.namespaceURI !== "http://www.w3.org/1999/xhtml") continue;
+    // LinkeDOM reports MathML as XHTML even though adjusted MathML attributes are case-sensitive.
+    if (mathMlElements.has(element)) continue;
+    const attributes = Array.from(element.attributes);
+    const normalized = new Map<string, string>();
+    for (const attribute of attributes) {
+      const name = attribute.name.replace(/[A-Z]/g, (character) => character.toLowerCase());
+      if (!normalized.has(name)) normalized.set(name, attribute.value);
+    }
+    if (
+      normalized.size === attributes.length &&
+      attributes.every((attribute) => normalized.has(attribute.name))
+    ) {
+      continue;
+    }
+    for (const attribute of attributes) element.removeAttribute(attribute.name);
+    for (const [name, value] of normalized) element.setAttribute(name, value);
+  }
 }
 
 function normalizeDocumentStructure(document: Document): void {

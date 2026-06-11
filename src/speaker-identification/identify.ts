@@ -25,6 +25,7 @@ export type SpeakerIdentificationResult = {
   mappings: SpeakerIdentityMapping[];
   transcriptHash: string | null;
   usage: LlmTokenUsage | null;
+  inferenceAttempted: boolean;
   warning: string | null;
   cacheable: boolean;
 };
@@ -295,6 +296,7 @@ export async function identifySpeakersInExtractedContent({
       mappings: [],
       transcriptHash: null,
       usage: null,
+      inferenceAttempted: false,
       warning: "Speaker identification skipped because diarization returned no timed segments.",
       cacheable: false,
     };
@@ -328,8 +330,10 @@ export async function identifySpeakersInExtractedContent({
 
   const unresolvedSpeakers = genericSpeakers.filter((speaker) => !mappings.has(speaker));
   let usage: LlmTokenUsage | null = null;
+  let inferenceAttempted = false;
   let warning: string | null = null;
   if (unresolvedSpeakers.length > 0 && openaiApiKey) {
+    inferenceAttempted = true;
     try {
       const inferred = await inferMappings({
         segments: rawSegments,
@@ -375,6 +379,7 @@ export async function identifySpeakersInExtractedContent({
     mappings: resolvedMappings,
     transcriptHash,
     usage,
+    inferenceAttempted,
     warning,
     cacheable: !warning,
   };

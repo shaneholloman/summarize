@@ -133,6 +133,7 @@ describe("createUrlExtractionSession", () => {
       mappings: [],
       transcriptHash: null,
       usage: null,
+      inferenceAttempted: false,
       warning: null,
       cacheable: true,
     }));
@@ -191,6 +192,7 @@ describe("createUrlExtractionSession", () => {
       ],
       transcriptHash: "a".repeat(64),
       usage: null,
+      inferenceAttempted: false,
       warning: null,
       cacheable: true,
     }));
@@ -254,6 +256,52 @@ describe("createUrlExtractionSession", () => {
     await expect(
       session.fetchWithCache("https://www.youtube.com/watch?v=abcdefghijk"),
     ).rejects.toThrow(/ElevenLabs transcription failed/);
+  });
+
+  it("records speaker-identification calls without usage metadata", async () => {
+    const ctx = createCtx();
+    ctx.flags.speakerIdentification = {
+      sourceKey: "youtube:abcdefghijk",
+      profileName: "modern-wisdom",
+      host: "Chris Williamson",
+      knownSpeakers: ["Chris Williamson"],
+      context: "Modern Wisdom podcast",
+      model: "openai/gpt-5.5",
+      minimumConfidence: 0.85,
+      anchors: [],
+      remembered: null,
+      remember: false,
+      explicit: true,
+    };
+    identifySpeakersInExtractedContent.mockImplementationOnce(async ({ extracted }) => ({
+      extracted,
+      mappings: [],
+      transcriptHash: "a".repeat(64),
+      usage: null,
+      inferenceAttempted: true,
+      warning: null,
+      cacheable: true,
+    }));
+
+    const session = createUrlExtractionSession({
+      ctx: ctx as never,
+      markdown: {
+        convertHtmlToMarkdown: vi.fn(),
+        effectiveMarkdownMode: "off",
+        markdownRequested: false,
+      },
+      onProgress: null,
+    });
+    await session.fetchWithCache("https://www.youtube.com/watch?v=abcdefghijk");
+
+    expect(ctx.model.llmCalls).toEqual([
+      {
+        provider: "openai",
+        model: "openai/gpt-5.5",
+        usage: null,
+        purpose: "speaker-identification",
+      },
+    ]);
   });
 
   it("bypasses extract-cache reuse for local file URLs and forwards file mtime", async () => {
