@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import { type CacheState } from "../cache.js";
 import type { ExecFileFn } from "../markitdown.js";
 import type { FixedModelSpec } from "../model-spec.js";
+import { scopeTranscriptCacheForDiarization } from "../shared/transcript-diarization-cache-scope.js";
 import {
   createThemeRenderer,
   resolveThemeNameFromSources,
@@ -88,6 +89,7 @@ export async function createRunnerPlan(options: {
     streamMode,
     plain,
     verbose,
+    diarizationMode,
     maxExtractCharacters,
     isYoutubeUrl,
     format,
@@ -113,6 +115,9 @@ export async function createRunnerPlan(options: {
 
   if (extractMode && lengthExplicitlySet && !json && isRichTty(stderr)) {
     stderr.write("Warning: --length is ignored with --extract (no summary is generated).\n");
+  }
+  if (diarizationMode && !isYoutubeUrl) {
+    throw new Error("--diarize currently supports YouTube URLs");
   }
 
   const modelArg = typeof programOpts.model === "string" ? programOpts.model : null;
@@ -146,6 +151,7 @@ export async function createRunnerPlan(options: {
     openrouterConfigured,
     groqApiKey,
     assemblyaiApiKey,
+    elevenlabsApiKey,
     openaiApiKey,
     xaiApiKey,
     googleApiKey,
@@ -205,12 +211,13 @@ export async function createRunnerPlan(options: {
       : null;
 
   const transcriptNamespace = `yt:${youtubeMode}`;
-  const cacheState = await createCacheStateFromConfig({
+  let cacheState = await createCacheStateFromConfig({
     envForRun,
     config,
     noCacheFlag,
     transcriptNamespace,
   });
+  cacheState = scopeTranscriptCacheForDiarization(cacheState, diarizationMode);
   const mediaCache = await createMediaCacheFromConfig({
     envForRun,
     config,
@@ -400,6 +407,7 @@ export async function createRunnerPlan(options: {
       firecrawlMode: requestedFirecrawlMode,
       videoMode,
       transcriptTimestamps,
+      transcriptDiarization: diarizationMode,
       outputLanguage,
       lengthArg,
       forceSummary,
@@ -468,6 +476,7 @@ export async function createRunnerPlan(options: {
         falApiKey,
         groqApiKey,
         assemblyaiApiKey,
+        elevenlabsApiKey,
         openaiApiKey,
       },
       summaryEngine,

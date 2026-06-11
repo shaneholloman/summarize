@@ -7,9 +7,11 @@
 - Add Antigravity CLI (`agy`) as a supported CLI provider. (#231, thanks @yetmike)
 - Chrome extension: add Browser slide runtime so YouTube slide summaries can run without the daemon, while keeping Daemon as an optional faster runtime.
 - Chrome extension: persist Browser-mode summaries, slide text, transcripts, and thumbnails in Chrome storage for 30 days, with Runtime settings showing cache status and a clear button.
+- Add `--diarize [auto|elevenlabs|openai]` for speaker-labelled YouTube transcripts using ElevenLabs Scribe v2 or OpenAI `gpt-4o-transcribe-diarize`.
 
 ### Fixes
 
+- YouTube transcripts: let `--diarize auto` and matching explicit provider requests reuse the same compatible cached speaker-labelled transcript instead of re-transcribing the same video.
 - CLI cache: include local media `fileMtime` when writing transcript cache entries so repeated unchanged audio/video extraction can hit cache (#240, #241, thanks @alfozan).
 - CLI: pass Codex image attachments to `codex exec` so local image summaries no longer fail before starting (#242, #243, thanks @alfozan).
 - OpenAI-compatible gateways: honor `OPENAI_USE_CHAT_COMPLETIONS=false` and `openai.useChatCompletions=false` so custom base URLs can use the Responses API (#235, #236, thanks @mzbgf).

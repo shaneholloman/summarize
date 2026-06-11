@@ -1,3 +1,4 @@
+import type { DiarizationPreference } from "../../transcription/whisper/types.js";
 import type { TranscriptCache } from "../cache/types.js";
 import type {
   CacheMode,
@@ -19,6 +20,7 @@ export interface CacheReadArguments {
   cacheMode: CacheMode;
   transcriptCache: TranscriptCache | null;
   transcriptTimestamps?: boolean;
+  transcriptDiarization?: DiarizationPreference | null;
   fileMtime?: number | null;
 }
 
@@ -33,6 +35,7 @@ export const readTranscriptCache = async ({
   cacheMode,
   transcriptCache,
   transcriptTimestamps = false,
+  transcriptDiarization = null,
   fileMtime,
 }: CacheReadArguments): Promise<TranscriptCacheLookup> => {
   const cached = transcriptCache
@@ -71,6 +74,14 @@ export const readTranscriptCache = async ({
 
   const cachedSegments = extractSegments(cached.metadata);
   const hasSegments = Boolean(cachedSegments && cachedSegments.length > 0);
+  const hasSpeakerLabels = cached.metadata?.speakerLabels === true;
+  if (!transcriptDiarization && hasSpeakerLabels) {
+    diagnostics.notes = appendNote(
+      diagnostics.notes,
+      "Cached transcript includes speaker labels; fetching fresh copy",
+    );
+    return { cached, resolution: null, diagnostics };
+  }
   const timestampsFlag = cached.metadata?.timestamps;
   if (
     transcriptTimestamps &&
@@ -86,6 +97,15 @@ export const readTranscriptCache = async ({
   if (transcriptTimestamps && timestampsFlag === false) {
     diagnostics.notes = appendNote(diagnostics.notes, "Transcript timestamps unavailable");
   }
+  if (transcriptDiarization) {
+    if (!isCachedDiarizationCompatible(cached.metadata, transcriptDiarization)) {
+      diagnostics.notes = appendNote(
+        diagnostics.notes,
+        "Cached transcript missing requested speaker labels; fetching fresh copy",
+      );
+      return { cached, resolution: null, diagnostics };
+    }
+  }
 
   const resolution: TranscriptResolution = {
     text: cached.content,
@@ -95,6 +115,16 @@ export const readTranscriptCache = async ({
   };
   return { cached, resolution, diagnostics };
 };
+
+export function isCachedDiarizationCompatible(
+  metadata: Record<string, unknown> | null | undefined,
+  preference: DiarizationPreference | null,
+): boolean {
+  const hasSpeakerLabels = metadata?.speakerLabels === true;
+  if (!preference) return !hasSpeakerLabels;
+  const provider = metadata?.diarizationProvider;
+  return hasSpeakerLabels && (preference === "auto" || provider === preference);
+}
 
 const buildBaseDiagnostics = (cacheMode: CacheMode): CacheDiagnostics => ({
   cacheMode,

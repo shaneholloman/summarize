@@ -26,6 +26,7 @@ import {
   resolveSummaryLength,
 } from "../run/run-settings.js";
 import { createSummaryEngine } from "../run/summary-engine.js";
+import { scopeTranscriptCacheForDiarization } from "../shared/transcript-diarization-cache-scope.js";
 import type { SlideImage, SlideSettings, SlideSourceKind } from "../slides/index.js";
 
 type TextSink = {
@@ -143,6 +144,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     youtubeMode: null,
     videoMode: null,
     transcriptTimestamps: null,
+    transcriptDiarization: null,
     forceSummary: null,
     timeoutMs: null,
     retries: null,
@@ -172,6 +174,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     openrouterConfigured,
     groqApiKey,
     assemblyaiApiKey,
+    elevenlabsApiKey,
     openaiApiKey,
     xaiApiKey,
     googleApiKey,
@@ -373,6 +376,10 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     },
   });
 
+  const urlCache = scopeTranscriptCacheForDiarization(
+    cache,
+    resolvedOverrides.transcriptDiarization ?? null,
+  );
   const ctx: UrlFlowContext = createUrlFlowContext({
     io: {
       env: envForRun,
@@ -394,6 +401,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
       firecrawlMode,
       videoMode,
       transcriptTimestamps: resolvedOverrides.transcriptTimestamps ?? false,
+      transcriptDiarization: resolvedOverrides.transcriptDiarization ?? null,
       outputLanguage,
       lengthArg,
       forceSummary: resolvedOverrides.forceSummary ?? false,
@@ -459,13 +467,14 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
         falApiKey,
         groqApiKey,
         assemblyaiApiKey,
+        elevenlabsApiKey,
         openaiApiKey,
       },
       summaryEngine,
       getLiteLlmCatalog: metrics.getLiteLlmCatalog,
       llmCalls: metrics.llmCalls,
     },
-    cache,
+    cache: urlCache,
     mediaCache,
     runtimeHooks: {
       setTranscriptionCost: metrics.setTranscriptionCost,

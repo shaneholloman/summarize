@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import type { CacheState } from "../src/cache.js";
+import { describe, expect, it, vi } from "vitest";
+import type { CacheState, CacheStore } from "../src/cache.js";
 import { createDaemonUrlFlowContext } from "../src/daemon/flow-context.js";
 
 function makeTempHome(): string {
@@ -178,6 +178,7 @@ describe("daemon/flow-context (overrides)", () => {
         youtubeMode: "no-auto",
         videoMode: "transcript",
         transcriptTimestamps: null,
+        transcriptDiarization: null,
         forceSummary: null,
         timeoutMs: 45_000,
         retries: 2,
@@ -198,6 +199,106 @@ describe("daemon/flow-context (overrides)", () => {
     expect(ctx.flags.timeoutMs).toBe(45_000);
     expect(ctx.flags.retries).toBe(2);
     expect(ctx.flags.maxOutputTokensArg).toBe(512);
+  });
+
+  it("scopes the shared transcript cache by diarization mode", async () => {
+    const home = makeTempHome();
+    const get = vi.fn(async () => ({
+      content: "Speaker A: cached openai",
+      source: "yt-dlp",
+      expired: false,
+      metadata: { diarizationProvider: "openai", speakerLabels: true },
+    }));
+    const set = vi.fn(async () => {});
+    const store: CacheStore = {
+      getText: () => null,
+      getJson: () => null,
+      setText: () => {},
+      setJson: () => {},
+      clear: () => {},
+      close: () => {},
+      transcriptCache: { get, set },
+    };
+    const cache: CacheState = {
+      mode: "default",
+      store,
+      ttlMs: 0,
+      maxBytes: 0,
+      path: null,
+    };
+    const ctx = createDaemonUrlFlowContext({
+      env: { HOME: home },
+      fetchImpl: fetch,
+      cache,
+      modelOverride: null,
+      promptOverride: null,
+      lengthRaw: "xl",
+      languageRaw: "auto",
+      maxExtractCharacters: null,
+      overrides: {
+        firecrawlMode: null,
+        markdownMode: null,
+        preprocessMode: null,
+        youtubeMode: null,
+        videoMode: null,
+        transcriptTimestamps: null,
+        transcriptDiarization: "openai",
+        forceSummary: null,
+        timeoutMs: null,
+        retries: null,
+        maxOutputTokensArg: null,
+        transcriber: null,
+        autoCliFallbackEnabled: null,
+        autoCliOrder: null,
+      },
+      runStartedAtMs: Date.now(),
+      stdoutSink: { writeChunk: () => {} },
+    });
+
+    await ctx.cache.store?.transcriptCache.get({ url: "https://example.com/video" });
+    expect(get).toHaveBeenCalledWith({
+      url: "summarize-diarize:openai:https://example.com/video",
+    });
+  });
+
+  it("leaves cache wiring unchanged when no shared cache store exists", () => {
+    const home = makeTempHome();
+    const ctx = createDaemonUrlFlowContext({
+      env: { HOME: home },
+      fetchImpl: fetch,
+      cache: {
+        mode: "default",
+        store: null,
+        ttlMs: 0,
+        maxBytes: 0,
+        path: null,
+      },
+      modelOverride: null,
+      promptOverride: null,
+      lengthRaw: "xl",
+      languageRaw: "auto",
+      maxExtractCharacters: null,
+      overrides: {
+        firecrawlMode: null,
+        markdownMode: null,
+        preprocessMode: null,
+        youtubeMode: null,
+        videoMode: null,
+        transcriptTimestamps: null,
+        transcriptDiarization: "openai",
+        forceSummary: null,
+        timeoutMs: null,
+        retries: null,
+        maxOutputTokensArg: null,
+        transcriber: null,
+        autoCliFallbackEnabled: null,
+        autoCliOrder: null,
+      },
+      runStartedAtMs: Date.now(),
+      stdoutSink: { writeChunk: () => {} },
+    });
+
+    expect(ctx.cache.store).toBeNull();
   });
 
   it("defaults markdownMode to readability when format=markdown", () => {
