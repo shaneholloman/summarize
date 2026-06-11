@@ -10,6 +10,7 @@
   - `@steipete/summarize` = CLI + UX (TTY/progress/streaming). Depends on core.
   - `@steipete/summarize-core` (`packages/core`) = library surface for programmatic use (Sweetistics etc). No CLI entrypoints.
 - Versioning: lockstep versions; publish order: core first, then CLI (`scripts/release.sh` / `RELEASING.md`).
+- Homebrew/core formula is not owned here; BrewTestBot autobumps releases about every 3h. Do not block or manually manage it; ship and continue.
 - Dev:
   - Build: `pnpm -s build` (builds core first)
   - Gate: `pnpm -s check`
