@@ -24,7 +24,8 @@ read_when:
 - `--video-mode transcript` prefers transcript-first media handling even when a page has text.
 - Direct media URLs (mp4/webm/m4a/etc) skip HTML and transcribe.
 - Local audio/video files are routed through the same transcript-first pipeline.
-- `--diarize [auto|elevenlabs|openai]` adds speaker labels to local files and direct media URLs; `--identify-speakers`, anchors, profiles, and remembered mappings use the same naming pass as YouTube. Local files do not require `yt-dlp`.
+- `--diarize [auto|elevenlabs|openai]` adds speaker labels to local files and direct media URLs; `--identify-speakers`, anchors, profiles, and remembered mappings use the same naming pass as YouTube. Local files do not require `yt-dlp`. Local video is converted once to mono 16 kHz MP3 before upload, then reused if diarization falls back between providers.
+- YouTube diarization selects audio-only media. Combined `--slides --diarize` downloads separate video-only and audio-only streams in one yt-dlp run, then shares the video with slide extraction.
 - YouTube still uses the YouTube transcript pipeline (captions → yt-dlp → Android VR direct audio fallback).
 - X/Twitter status URLs with detected video auto-switch to transcript-first (yt-dlp), even in auto mode.
 - X broadcasts (`/i/broadcasts/...`) are treated as media-only and go transcript-first by default.

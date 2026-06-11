@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveBundledFfmpegCommand } from "../packages/core/src/ffmpeg.js";
+import { runFfmpegTranscodeToMp3 } from "../packages/core/src/transcription/whisper/ffmpeg.js";
 import { runProcess, runProcessCapture } from "../src/slides/process.js";
 
 const fixture = resolve(
@@ -68,5 +69,19 @@ describe("bundled ffmpeg wasm", () => {
       errorLabel: "ffmpeg-wasm",
     });
     expect((await stat(outputPath)).size).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("extracts diarization audio without a native ffmpeg command", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "summarize-ffmpeg-wasm-audio-"));
+    const outputPath = join(outputDir, "audio.mp3");
+    vi.stubEnv("PATH", outputDir);
+    await runFfmpegTranscodeToMp3({
+      inputPath: fixture,
+      outputPath,
+      bitrateKbps: 24,
+    });
+    const output = await stat(outputPath);
+    expect(output.size).toBeGreaterThan(0);
+    expect(output.size).toBeLessThan((await stat(fixture)).size);
   }, 60_000);
 });

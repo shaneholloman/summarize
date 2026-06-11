@@ -56,6 +56,7 @@ export async function buildResultFromHtmlDocument({
   mediaTranscriptMode,
   transcriptTimestamps,
   transcriptDiarization,
+  transcriptVideoDownload,
   firecrawlDiagnostics,
   markdownRequested,
   markdownMode,
@@ -71,6 +72,7 @@ export async function buildResultFromHtmlDocument({
   mediaTranscriptMode: FetchLinkContentOptions["mediaTranscript"];
   transcriptTimestamps?: FetchLinkContentOptions["transcriptTimestamps"];
   transcriptDiarization?: FetchLinkContentOptions["transcriptDiarization"];
+  transcriptVideoDownload?: FetchLinkContentOptions["transcriptVideoDownload"];
   firecrawlDiagnostics: FirecrawlDiagnostics;
   markdownRequested: boolean;
   markdownMode: MarkdownMode;
@@ -131,6 +133,7 @@ export async function buildResultFromHtmlDocument({
     mediaTranscriptMode,
     transcriptTimestamps,
     transcriptDiarization,
+    transcriptVideoDownload,
     cacheMode,
   });
   await refreshYoutubeSourceMetrics({

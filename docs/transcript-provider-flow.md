@@ -57,7 +57,11 @@ Goal: keep provider entrypoints thin; keep provider policy explicit.
   OpenAI chunk/delegate policy.
 - `packages/core/src/transcription/whisper/diarization.ts`
   Explicit speaker-label requests only.
+  Extracts local video audio once before provider attempts.
   ElevenLabs Scribe v2 first in auto mode, then OpenAI `gpt-4o-transcribe-diarize`.
+- YouTube yt-dlp media:
+  Diarization-only downloads audio.
+  Combined slides + diarization downloads separate audio/video streams once and shares the video cache entry with slide extraction.
 - `src/speaker-identification/`
   Optional post-processing for generic diarization labels.
   Timestamp anchors first, exact-transcript remembered mappings second, OpenAI GPT-5.5 context inference last.

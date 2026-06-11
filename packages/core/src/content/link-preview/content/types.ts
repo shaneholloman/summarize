@@ -31,6 +31,7 @@ export interface FetchLinkContentOptions {
   mediaTranscript?: MediaTranscriptMode;
   transcriptTimestamps?: boolean;
   transcriptDiarization?: DiarizationPreference | null;
+  transcriptVideoDownload?: boolean;
   firecrawl?: FirecrawlMode;
   format?: ContentFormat;
   markdownMode?: MarkdownMode;

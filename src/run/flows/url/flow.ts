@@ -13,6 +13,7 @@ import {
   formatUSD,
 } from "../../format.js";
 import { writeVerbose } from "../../logging.js";
+import { createRunScopedMediaCache } from "../../run-media-cache.js";
 import { deriveExtractionUi, logExtractionDiagnostics } from "./extract.js";
 import { createUrlExtractionSession } from "./extraction-session.js";
 import { createUrlFlowProgress, writeSlidesBackgroundFailureWarning } from "./flow-progress.js";
@@ -88,6 +89,11 @@ export async function runUrlFlow({
     io.envForRun,
   );
 
+  const sharedMediaScope =
+    isYoutubeUrl && flags.slides && flags.transcriptDiarization
+      ? await createRunScopedMediaCache(ctx.mediaCache)
+      : null;
+  const mediaCtx = sharedMediaScope ? { ...ctx, mediaCache: sharedMediaScope.cache } : ctx;
   writeVerbose(io.stderr, flags.verbose, "extract start", flags.verboseColor, io.envForRun);
   const {
     handleSigint,
@@ -103,8 +109,8 @@ export async function runUrlFlow({
     styleDim,
     styleLabel,
     websiteProgress,
-  } = createUrlFlowProgress({ ctx, theme });
-  const flowCtx = progressHooks === hooks ? ctx : { ...ctx, hooks: progressHooks };
+  } = createUrlFlowProgress({ ctx: mediaCtx, theme });
+  const flowCtx = progressHooks === hooks ? mediaCtx : { ...mediaCtx, hooks: progressHooks };
   const activeHooks = flowCtx.hooks;
 
   const extractionSession = createUrlExtractionSession({
@@ -339,5 +345,6 @@ export async function runUrlFlow({
     }
     activeHooks.clearProgressIfCurrent(pauseProgressLine);
     stopProgress();
+    await sharedMediaScope?.cleanup();
   }
 }

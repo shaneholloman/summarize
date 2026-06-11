@@ -57,7 +57,7 @@ summarize "https://www.youtube.com/watch?v=..." --extract --diarize openai --tim
 - `auto`: ElevenLabs Scribe v2 first, then OpenAI `gpt-4o-transcribe-diarize`.
 - `elevenlabs`: requires `ELEVENLABS_API_KEY`.
 - `openai`: requires `OPENAI_API_KEY`.
-- YouTube diarization requires `yt-dlp`; local media diarization does not. OpenAI uses `ffmpeg` to split long recordings into bounded chunks, offset their timestamps, and keep chunk-local labels distinct.
+- YouTube diarization requires `yt-dlp` and downloads audio only. With `--slides`, one yt-dlp invocation downloads separate audio-only and video-only streams so diarization uploads audio while slide extraction reuses video without a merge. Local media diarization does not require `yt-dlp`; local video audio is extracted with native or bundled FFmpeg before upload and reused across provider fallbacks. OpenAI uploads are compressed to stay under its size limit when possible, and long recordings are split into bounded chunks with offset timestamps and distinct chunk-local labels.
 
 ## Speaker identification
 

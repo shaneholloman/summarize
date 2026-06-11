@@ -79,6 +79,7 @@ export async function fetchLinkContent(
   const mediaTranscriptMode = options?.mediaTranscript ?? "auto";
   const transcriptTimestamps = options?.transcriptTimestamps ?? false;
   const transcriptDiarization = options?.transcriptDiarization ?? null;
+  const transcriptVideoDownload = options?.transcriptVideoDownload ?? false;
   const firecrawlMode = resolveFirecrawlMode(options);
   const markdownRequested = (options?.format ?? "text") === "markdown";
   const markdownMode: MarkdownMode = options?.markdownMode ?? "auto";
@@ -103,6 +104,7 @@ export async function fetchLinkContent(
       mediaTranscriptMode,
       transcriptTimestamps,
       transcriptDiarization,
+      transcriptVideoDownload,
       cacheMode,
       fileMtime,
     });
@@ -167,6 +169,7 @@ export async function fetchLinkContent(
       mediaTranscriptMode,
       transcriptTimestamps,
       transcriptDiarization,
+      transcriptVideoDownload,
       cacheMode,
       fileMtime,
     });
@@ -222,6 +225,7 @@ export async function fetchLinkContent(
       mediaTranscriptMode: broadcastTranscriptMode,
       transcriptTimestamps,
       transcriptDiarization,
+      transcriptVideoDownload,
       cacheMode,
       fileMtime,
     });
@@ -276,6 +280,7 @@ export async function fetchLinkContent(
       mediaTranscriptMode,
       transcriptTimestamps,
       transcriptDiarization,
+      transcriptVideoDownload,
       cacheMode,
       fileMtime,
     });
@@ -437,6 +442,7 @@ export async function fetchLinkContent(
             mediaKindHint: media?.kind ?? null,
             transcriptTimestamps,
             transcriptDiarization,
+            transcriptVideoDownload,
             cacheMode,
             fileMtime,
           });
@@ -543,6 +549,7 @@ export async function fetchLinkContent(
       mediaTranscriptMode,
       transcriptTimestamps,
       transcriptDiarization,
+      transcriptVideoDownload,
       firecrawlDiagnostics,
       markdownRequested,
       markdownMode,
@@ -628,6 +635,7 @@ export async function fetchLinkContent(
     mediaTranscriptMode,
     transcriptTimestamps,
     transcriptDiarization,
+    transcriptVideoDownload,
     firecrawlDiagnostics,
     markdownRequested,
     markdownMode,

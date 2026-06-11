@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { buildSharedVideoMediaCacheKey } from "@steipete/summarize-core/content";
 import { runProcess, runProcessCapture } from "./process.js";
 
 const YT_DLP_TIMEOUT_MS = 300_000;
@@ -12,7 +13,7 @@ export function buildYtDlpCookiesArgs(cookiesFromBrowser?: string | null): strin
 }
 
 export function buildSlidesMediaCacheKey(url: string): string {
-  return `${url}#summarize-slides`;
+  return buildSharedVideoMediaCacheKey(url);
 }
 
 export function formatBytes(bytes: number): string {

@@ -48,6 +48,7 @@ export async function buildResultFromFirecrawl({
   mediaTranscriptMode,
   transcriptTimestamps,
   transcriptDiarization,
+  transcriptVideoDownload,
   firecrawlDiagnostics,
   markdownRequested,
   timeoutMs,
@@ -61,6 +62,7 @@ export async function buildResultFromFirecrawl({
   mediaTranscriptMode: FetchLinkContentOptions["mediaTranscript"];
   transcriptTimestamps?: FetchLinkContentOptions["transcriptTimestamps"];
   transcriptDiarization?: FetchLinkContentOptions["transcriptDiarization"];
+  transcriptVideoDownload?: FetchLinkContentOptions["transcriptVideoDownload"];
   firecrawlDiagnostics: FirecrawlDiagnostics;
   markdownRequested: boolean;
   timeoutMs: number;
@@ -85,6 +87,7 @@ export async function buildResultFromFirecrawl({
     mediaTranscriptMode,
     transcriptTimestamps,
     transcriptDiarization,
+    transcriptVideoDownload,
     cacheMode,
   });
   const video = payload.html ? detectPrimaryVideoFromHtml(payload.html, url) : null;

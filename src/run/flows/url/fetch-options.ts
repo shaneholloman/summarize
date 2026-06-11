@@ -59,6 +59,7 @@ export function resolveUrlFetchOptions({
       : "auto",
     transcriptTimestamps: flags.transcriptTimestamps,
     transcriptDiarization: flags.transcriptDiarization,
+    transcriptVideoDownload: Boolean(flags.slides && flags.transcriptDiarization),
     firecrawl: flags.firecrawlMode,
     format: markdown.markdownRequested ? "markdown" : "text",
     markdownMode: markdown.markdownRequested ? markdown.effectiveMarkdownMode : undefined,

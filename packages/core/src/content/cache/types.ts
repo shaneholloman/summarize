@@ -1,5 +1,9 @@
 import type { TranscriptSource } from "../link-preview/types.js";
 
+export function buildSharedVideoMediaCacheKey(url: string): string {
+  return `${url}#summarize-slides`;
+}
+
 /** Public shape returned by transcript cache implementations. */
 export interface TranscriptCacheGetResult {
   content: string | null;

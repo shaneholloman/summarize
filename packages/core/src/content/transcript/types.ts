@@ -28,6 +28,7 @@ export interface ProviderFetchOptions {
   mediaKindHint?: "video" | "audio" | null;
   transcriptTimestamps?: boolean;
   transcriptDiarization?: DiarizationPreference | null;
+  transcriptVideoDownload?: boolean;
   ytDlpPath: string | null;
   transcription?: TranscriptionConfig;
   falApiKey?: string | null;

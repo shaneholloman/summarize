@@ -27,8 +27,19 @@ vi.mock("node:fs", async () => {
   };
 });
 vi.mock("../packages/core/src/transcription/whisper/fal-client.js", () => falMock);
+vi.mock("../packages/core/src/transcription/whisper/ffmpeg.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../packages/core/src/transcription/whisper/ffmpeg.js")>();
+  return {
+    ...actual,
+    probeMediaDurationSecondsWithFfprobe: vi.fn(async () => 2),
+  };
+});
 
-import { fetchTranscriptWithYtDlp } from "../packages/core/src/content/transcript/providers/youtube/yt-dlp.js";
+import {
+  buildYtDlpDownloadArgs,
+  fetchTranscriptWithYtDlp,
+} from "../packages/core/src/content/transcript/providers/youtube/yt-dlp.js";
 
 const mockSpawnSuccess = () => {
   spawnMock.mockImplementation(() => {
@@ -249,6 +260,90 @@ describe("yt-dlp transcript helper", () => {
 
     const args = spawnMock.mock.calls[0]?.[1] ?? [];
     expect(args).toContain("--no-playlist");
+  });
+
+  it("uses audio-only extraction unless a shared slide video is requested", () => {
+    const audioArgs = buildYtDlpDownloadArgs({
+      url: "https://youtu.be/dQw4w9WgXcQ",
+      output: "/tmp/audio.mp3",
+      format: "bestaudio",
+      extractAudio: true,
+      progress: false,
+    });
+    const sharedArgs = buildYtDlpDownloadArgs({
+      url: "https://youtu.be/dQw4w9WgXcQ",
+      output: "/tmp/media.%(vcodec)s.%(acodec)s.%(ext)s",
+      format: "bestvideo,bestaudio",
+      extractAudio: false,
+      progress: false,
+    });
+
+    expect(audioArgs).toEqual(
+      expect.arrayContaining(["-f", "bestaudio", "-x", "--audio-format", "mp3"]),
+    );
+    expect(sharedArgs).toEqual(expect.arrayContaining(["-f", "bestvideo,bestaudio"]));
+    expect(sharedArgs).not.toContain("-x");
+    expect(sharedArgs).not.toContain("--audio-format");
+  });
+
+  it("downloads audio when the shared slide cache contains video only", async () => {
+    const mediaCache = {
+      get: vi.fn(async ({ url }: { url: string }) =>
+        url.endsWith("#summarize-slides")
+          ? {
+              url,
+              filePath: "/tmp/cached-video.mp4",
+              sizeBytes: 1024,
+              sha256: null,
+              mediaType: "video/mp4",
+              filename: "video.mp4",
+              createdAtMs: 1,
+              lastAccessAtMs: 1,
+              expiresAtMs: null,
+            }
+          : null,
+      ),
+      put: vi.fn(),
+    };
+    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          segments: [{ start: 0, end: 1, speaker: "A", text: "Cached." }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const result = await fetchTranscriptWithYtDlp({
+      ytDlpPath: "/usr/bin/yt-dlp",
+      openaiApiKey: "OPENAI",
+      diarization: "openai",
+      downloadVideo: true,
+      mediaCache,
+      url: "https://youtu.be/dQw4w9WgXcQ",
+    });
+
+    expect(result.text).toBe("Speaker A: Cached.");
+    expect(result.notes).toContain("shared slide video cache hit");
+    expect(mediaCache.get).toHaveBeenCalledWith({
+      url: "https://youtu.be/dQw4w9WgXcQ",
+    });
+    expect(mediaCache.get).toHaveBeenCalledWith({
+      url: "https://youtu.be/dQw4w9WgXcQ#summarize-slides",
+    });
+    const args = spawnMock.mock.calls.find(([command]) => command === "/usr/bin/yt-dlp")?.[1] ?? [];
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "-f",
+        expect.stringContaining("bestaudio"),
+        "-x",
+        "--audio-format",
+        "mp3",
+      ]),
+    );
+    expect(args).not.toContain(
+      "bestvideo[height<=720][vcodec^=avc1][ext=mp4]/bestvideo[height<=720][ext=mp4]/bestvideo[height<=720],bestaudio[vcodec=none]",
+    );
   });
 
   it("emits download progress events from yt-dlp output", async () => {

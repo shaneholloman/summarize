@@ -1,9 +1,19 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCli } from "../src/run.js";
+
+vi.mock("../packages/core/src/transcription/whisper/ffmpeg.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../packages/core/src/transcription/whisper/ffmpeg.js")>();
+  return {
+    ...actual,
+    probeMediaDurationSecondsWithFfprobe: vi.fn(async () => 2),
+  };
+});
 
 function collectStream() {
   let text = "";
@@ -29,7 +39,19 @@ describe("CLI media diarization integration", () => {
     async ({ extension, timestamps, identifySpeakers }) => {
       const root = mkdtempSync(join(tmpdir(), `summarize-diarize-e2e-${extension}-`));
       const mediaPath = join(root, `interview.${extension}`);
-      writeFileSync(mediaPath, Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]));
+      if (extension === "mp4") {
+        copyFileSync(
+          fileURLToPath(
+            new URL(
+              "../apps/chrome-extension/tests/fixtures/ffmpeg-wasm-sample.mp4",
+              import.meta.url,
+            ),
+          ),
+          mediaPath,
+        );
+      } else {
+        writeFileSync(mediaPath, Buffer.from([0x49, 0x44, 0x33]));
+      }
       const stdout = collectStream();
       const stderr = collectStream();
       const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -39,6 +61,12 @@ describe("CLI media diarization integration", () => {
         expect(form.get("model")).toBe("gpt-4o-transcribe-diarize");
         expect(form.get("response_format")).toBe("diarized_json");
         expect(form.get("chunking_strategy")).toBe("auto");
+        const file = form.get("file") as File;
+        expect(file.name).toBe(extension === "mp4" ? "audio.mp3" : "interview.mp3");
+        expect(file.type).toBe("audio/mpeg");
+        if (extension === "mp4") {
+          expect(file.size).toBeLessThan(readFileSync(mediaPath).byteLength);
+        }
         return new Response(
           JSON.stringify({
             segments: [

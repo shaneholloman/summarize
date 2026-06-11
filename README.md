@@ -502,8 +502,12 @@ summarize "https://www.youtube.com/watch?v=..." --extract --diarize elevenlabs \
 
 Bare `--diarize` prefers ElevenLabs Scribe v2 (`ELEVENLABS_API_KEY`) and falls back to OpenAI
 `gpt-4o-transcribe-diarize` (`OPENAI_API_KEY`). Speaker changes are emitted as `Speaker <label>: ...`;
-combine with `--timestamps` for `[mm:ss] Speaker <label>: ...`. Local files are transcribed directly;
-YouTube and remote direct media use their normal download path.
+combine with `--timestamps` for `[mm:ss] Speaker <label>: ...`. Before upload, local video is reduced
+to mono 16 kHz MP3 with native or bundled FFmpeg and the same audio file is reused across provider
+fallbacks. Local audio is passed through unless OpenAI's upload limit requires compression. YouTube
+diarization downloads audio only. When combined with `--slides`, one yt-dlp invocation downloads
+separate audio and slide-quality video streams; diarization uploads the audio while slides reuse the
+video. Remote direct media uses its normal audio download path.
 YouTube transcript extraction also prints the current public view count and exposes the resolved
 video ID and observation timestamp in `extracted.sourceMetrics` in JSON output.
 Long OpenAI recordings are split into bounded chunks; timestamps are reassembled and

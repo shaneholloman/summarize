@@ -64,6 +64,15 @@ describe("transcription diarization", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    ffmpegMocks.isFfmpegAvailable.mockReset();
+    ffmpegMocks.isFfmpegAvailable.mockResolvedValue(true);
+    ffmpegMocks.probeMediaDurationSecondsWithFfprobe.mockReset();
+    ffmpegMocks.probeMediaDurationSecondsWithFfprobe.mockResolvedValue(null);
+    ffmpegMocks.runFfmpegSegment.mockReset();
+    ffmpegMocks.runFfmpegTranscodeToMp3.mockReset();
+    ffmpegMocks.runFfmpegTranscodeToMp3.mockImplementation(async ({ outputPath }) => {
+      await writeFile(outputPath, new Uint8Array([4, 5, 6]));
+    });
   });
 
   it("prefers ElevenLabs and falls back to OpenAI in auto mode", () => {
@@ -279,6 +288,192 @@ describe("transcription diarization", () => {
       });
       expect(result.provider).toBe("openai");
       expect(result.text).toBe("Speaker A: Hello.");
+    } finally {
+      vi.unstubAllGlobals();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts video audio once and reuses it across diarization fallbacks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "summarize-video-diarize-"));
+    const filePath = join(root, "interview.mp4");
+    await writeFile(filePath, new Uint8Array([1, 2, 3, 4, 5, 6]));
+    const uploads: Array<{ name: string; size: number; type: string }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      const file = form.get("file") as File;
+      uploads.push({ name: file.name, size: file.size, type: file.type });
+      if (input.toString().includes("elevenlabs")) {
+        return new Response("temporary failure", { status: 500 });
+      }
+      return new Response(
+        JSON.stringify({
+          segments: [{ start: 0, end: 1, speaker: "A", text: "Hello." }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    let preparedPath: string | null = null;
+    ffmpegMocks.runFfmpegTranscodeToMp3.mockImplementationOnce(
+      async ({ outputPath, bitrateKbps }) => {
+        expect(bitrateKbps).toBe(24);
+        preparedPath = outputPath;
+        await writeFile(outputPath, new Uint8Array([4, 5, 6]));
+      },
+    );
+
+    try {
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await transcribeMediaFileWithDiarization({
+        filePath,
+        mediaType: "video/mp4",
+        filename: "interview.mp4",
+        preference: "auto",
+        elevenlabsApiKey: "ELEVEN",
+        openaiApiKey: "OPENAI",
+        env: {},
+        totalDurationSeconds: 60,
+      });
+      expect(result.provider).toBe("openai");
+      expect(result.notes).toContain(
+        "Diarization: extracted audio from video as mono 16 kHz 24 kbps MP3",
+      );
+      expect(ffmpegMocks.runFfmpegTranscodeToMp3).toHaveBeenCalledTimes(1);
+      expect(uploads).toEqual([
+        { name: "audio.mp3", size: 3, type: "audio/mpeg" },
+        { name: "audio.mp3", size: 3, type: "audio/mpeg" },
+      ]);
+      expect(preparedPath).not.toBeNull();
+      await expect(access(preparedPath!)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      vi.unstubAllGlobals();
+      if (preparedPath) await rm(preparedPath, { force: true });
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses a higher bitrate for ElevenLabs-only video diarization", async () => {
+    const root = await mkdtemp(join(tmpdir(), "summarize-elevenlabs-video-diarize-"));
+    const filePath = join(root, "interview.mp4");
+    await writeFile(filePath, new Uint8Array([1, 2, 3]));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      const file = form.get("file") as File;
+      expect(file.name).toBe("audio.mp3");
+      expect(file.type).toBe("audio/mpeg");
+      return new Response(
+        JSON.stringify({
+          words: [{ text: "Hello", start: 0, end: 1, speaker_id: "speaker_1" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    try {
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await transcribeMediaFileWithDiarization({
+        filePath,
+        mediaType: "video/mp4",
+        filename: "interview.mp4",
+        preference: "elevenlabs",
+        elevenlabsApiKey: "ELEVEN",
+        openaiApiKey: null,
+        env: {},
+        totalDurationSeconds: 60,
+      });
+      expect(result.provider).toBe("elevenlabs");
+      expect(ffmpegMocks.runFfmpegTranscodeToMp3).toHaveBeenCalledWith({
+        inputPath: filePath,
+        outputPath: expect.stringMatching(/summarize-diarize-audio-.*\.mp3$/),
+        bitrateKbps: 32,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves the original video when local audio extraction is unavailable", async () => {
+    const root = await mkdtemp(join(tmpdir(), "summarize-video-diarize-no-ffmpeg-"));
+    const filePath = join(root, "interview.mp4");
+    await writeFile(filePath, new Uint8Array([1, 2, 3]));
+    ffmpegMocks.isFfmpegAvailable.mockResolvedValueOnce(false);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      const file = form.get("file") as File;
+      expect(file.name).toBe("interview.mp4");
+      expect(file.type).toBe("video/mp4");
+      return new Response(
+        JSON.stringify({
+          words: [{ text: "Hello", start: 0, end: 1, speaker_id: "speaker_1" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    try {
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await transcribeMediaFileWithDiarization({
+        filePath,
+        mediaType: "video/mp4",
+        filename: "interview.mp4",
+        preference: "elevenlabs",
+        elevenlabsApiKey: "ELEVEN",
+        openaiApiKey: null,
+        env: {},
+        totalDurationSeconds: 60,
+      });
+      expect(result.provider).toBe("elevenlabs");
+      expect(result.notes).toContain(
+        "Diarization: local audio extraction unavailable; uploading the original video",
+      );
+      expect(ffmpegMocks.runFfmpegTranscodeToMp3).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses a smaller original video when extracted audio exceeds OpenAI's limit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "summarize-video-diarize-smaller-original-"));
+    const filePath = join(root, "interview.mp4");
+    await writeFile(filePath, new Uint8Array([1, 2, 3]));
+    ffmpegMocks.runFfmpegTranscodeToMp3.mockImplementationOnce(async ({ outputPath }) => {
+      const handle = await open(outputPath, "w");
+      await handle.truncate(MAX_OPENAI_UPLOAD_BYTES + 1);
+      await handle.close();
+    });
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      const file = form.get("file") as File;
+      expect(file.name).toBe("interview.mp4");
+      expect(file.type).toBe("video/mp4");
+      expect(file.size).toBe(3);
+      return new Response(
+        JSON.stringify({
+          segments: [{ start: 0, end: 1, speaker: "A", text: "Hello." }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    try {
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await transcribeMediaFileWithDiarization({
+        filePath,
+        mediaType: "video/mp4",
+        filename: "interview.mp4",
+        preference: "openai",
+        elevenlabsApiKey: null,
+        openaiApiKey: "OPENAI",
+        env: {},
+        totalDurationSeconds: 60,
+      });
+      expect(result.provider).toBe("openai");
+      expect(result.notes).toContain(
+        "OpenAI diarization: extracted audio exceeded the upload limit; using the smaller original video",
+      );
+      expect(ffmpegMocks.runFfmpegTranscodeToMp3).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
       await rm(root, { recursive: true, force: true });

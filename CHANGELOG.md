@@ -2,6 +2,11 @@
 
 ## 0.17.3 - Unreleased
 
+### Fixes
+
+- Diarization: extract local video audio once before upload and reuse the compact mono MP3 across ElevenLabs/OpenAI fallbacks instead of sending the full video container.
+- YouTube diarization: download audio only unless slides are also requested; combined slide/diarization runs now fetch separate audio and video streams once and reuse the video for slide extraction.
+
 ## 0.17.2 - 2026-06-11
 
 ### Features

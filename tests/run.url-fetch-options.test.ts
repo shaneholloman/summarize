@@ -14,6 +14,7 @@ const baseFlags = {
   youtubeMode: "auto" as const,
   videoMode: "auto" as const,
   transcriptTimestamps: false,
+  transcriptDiarization: null,
   firecrawlMode: "off" as const,
   slides: null,
 };
@@ -80,5 +81,27 @@ describe("url fetch options", () => {
 
     expect(defaultResult.options.throwOnAssetLikeHtmlError).toBe(false);
     expect(cliResult.options.throwOnAssetLikeHtmlError).toBe(true);
+  });
+
+  it("requests shared video only when slides and diarization are combined", () => {
+    const diarizationOnly = resolveUrlFetchOptions({
+      targetUrl: "https://www.youtube.com/watch?v=abc123def45",
+      flags: { ...baseFlags, transcriptDiarization: "openai" },
+      markdown,
+      cacheMode: "default",
+    });
+    const slidesAndDiarization = resolveUrlFetchOptions({
+      targetUrl: "https://www.youtube.com/watch?v=abc123def45",
+      flags: {
+        ...baseFlags,
+        slides: { enabled: true },
+        transcriptDiarization: "openai",
+      },
+      markdown,
+      cacheMode: "default",
+    });
+
+    expect(diarizationOnly.options.transcriptVideoDownload).toBe(false);
+    expect(slidesAndDiarization.options.transcriptVideoDownload).toBe(true);
   });
 });

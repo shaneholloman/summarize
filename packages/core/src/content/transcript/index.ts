@@ -42,6 +42,7 @@ interface ResolveTranscriptOptions {
   mediaKindHint?: ProviderFetchOptions["mediaKindHint"];
   transcriptTimestamps?: ProviderFetchOptions["transcriptTimestamps"];
   transcriptDiarization?: ProviderFetchOptions["transcriptDiarization"];
+  transcriptVideoDownload?: ProviderFetchOptions["transcriptVideoDownload"];
   cacheMode?: CacheMode;
   fileMtime?: number | null;
 }
@@ -64,6 +65,7 @@ export const resolveTranscriptForLink = async (
     mediaKindHint,
     transcriptTimestamps,
     transcriptDiarization,
+    transcriptVideoDownload,
     cacheMode: providedCacheMode,
     fileMtime,
   }: ResolveTranscriptOptions = {},
@@ -172,6 +174,7 @@ export const resolveTranscriptForLink = async (
     mediaKindHint: mediaKindHint ?? null,
     transcriptTimestamps: transcriptTimestamps ?? false,
     transcriptDiarization: transcriptDiarization ?? null,
+    transcriptVideoDownload: transcriptVideoDownload ?? false,
   });
 
   if (shouldReportProgress) {

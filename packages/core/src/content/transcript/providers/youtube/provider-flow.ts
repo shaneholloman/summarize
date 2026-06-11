@@ -275,6 +275,7 @@ export async function tryYtDlpTranscript(args: {
     openaiApiKey: flow.options.openaiApiKey,
     falApiKey: flow.options.falApiKey,
     diarization: flow.options.transcriptDiarization ?? null,
+    downloadVideo: flow.options.transcriptVideoDownload ?? false,
     mediaCache: flow.options.mediaCache ?? null,
     url: flow.context.url,
     onProgress: flow.options.onProgress ?? null,

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { MAX_OPENAI_UPLOAD_BYTES } from "./constants.js";
 import { formatDiarizedTranscript } from "./diarization-format.js";
 import {
@@ -31,6 +31,28 @@ import { wrapError } from "./utils.js";
 export const OPENAI_DIARIZATION_CHUNK_SECONDS = 8 * 60;
 const OPENAI_DIARIZATION_CHUNK_CONCURRENCY = 1;
 const OPENAI_DIARIZATION_CHUNK_ATTEMPTS = 3;
+const VIDEO_EXTENSIONS = new Set([
+  ".3gp",
+  ".avi",
+  ".m4v",
+  ".mkv",
+  ".mov",
+  ".mp4",
+  ".mpeg",
+  ".mpg",
+  ".ogv",
+  ".ts",
+  ".webm",
+]);
+
+type PreparedDiarizationMedia = {
+  filePath: string;
+  mediaType: string;
+  filename: string | null;
+  cleanupPath: string | null;
+  note: string | null;
+  optimizedForOpenAi: boolean;
+};
 
 export function resolveDiarizationProviderOrder({
   preference,
@@ -109,45 +131,59 @@ export async function transcribeMediaFileWithDiarization({
   });
   const notes: string[] = [];
   let lastError: Error | null = null;
+  const preparedMedia = await prepareDiarizationMediaFile({
+    filePath,
+    mediaType,
+    filename,
+    providers,
+    totalDurationSeconds: effectiveDurationSeconds,
+  });
+  if (preparedMedia.note) notes.push(preparedMedia.note);
 
-  for (const [index, provider] of providers.entries()) {
-    try {
-      const result =
-        provider === "elevenlabs"
-          ? await transcribeFileWithElevenLabsDiarization({
-              filePath,
-              mediaType,
-              filename,
-              apiKey: elevenlabsApiKey!,
-            })
-          : await transcribeOpenAiMediaFile({
-              filePath,
-              mediaType,
-              filename,
-              apiKey: openaiApiKey!,
-              env,
-              totalDurationSeconds: effectiveDurationSeconds,
-              onProgress,
-            });
-      return { ...result, notes: [...notes, ...result.notes] };
-    } catch (caught) {
-      lastError = wrapError(`${providerLabel(provider)} diarization failed`, caught);
-      const next = providers[index + 1];
-      if (next) {
-        notes.push(
-          `${providerLabel(provider)} diarization failed; falling back to ${providerLabel(next)}: ${lastError.message}`,
-        );
+  try {
+    for (const [index, provider] of providers.entries()) {
+      try {
+        const result =
+          provider === "elevenlabs"
+            ? await transcribeFileWithElevenLabsDiarization({
+                filePath: preparedMedia.filePath,
+                mediaType: preparedMedia.mediaType,
+                filename: preparedMedia.filename,
+                apiKey: elevenlabsApiKey!,
+              })
+            : await transcribeOpenAiMediaFile({
+                filePath: preparedMedia.filePath,
+                mediaType: preparedMedia.mediaType,
+                filename: preparedMedia.filename,
+                apiKey: openaiApiKey!,
+                env,
+                totalDurationSeconds: effectiveDurationSeconds,
+                onProgress,
+                alreadyOptimized: preparedMedia.optimizedForOpenAi,
+                original: { filePath, mediaType, filename },
+              });
+        return { ...result, notes: [...notes, ...result.notes] };
+      } catch (caught) {
+        lastError = wrapError(`${providerLabel(provider)} diarization failed`, caught);
+        const next = providers[index + 1];
+        if (next) {
+          notes.push(
+            `${providerLabel(provider)} diarization failed; falling back to ${providerLabel(next)}: ${lastError.message}`,
+          );
+        }
       }
     }
-  }
 
-  return {
-    text: null,
-    provider: providers.at(-1) ?? null,
-    error: lastError ?? new Error("Speaker diarization failed"),
-    notes,
-    segments: null,
-  };
+    return {
+      text: null,
+      provider: providers.at(-1) ?? null,
+      error: lastError ?? new Error("Speaker diarization failed"),
+      notes,
+      segments: null,
+    };
+  } finally {
+    if (preparedMedia.cleanupPath) await fs.unlink(preparedMedia.cleanupPath).catch(() => {});
+  }
 }
 
 async function transcribeOpenAiMediaFile({
@@ -158,6 +194,8 @@ async function transcribeOpenAiMediaFile({
   env,
   totalDurationSeconds,
   onProgress,
+  alreadyOptimized,
+  original,
 }: {
   filePath: string;
   mediaType: string;
@@ -166,6 +204,12 @@ async function transcribeOpenAiMediaFile({
   env: Record<string, string | undefined>;
   totalDurationSeconds: number | null;
   onProgress?: ((event: WhisperProgressEvent) => void) | null;
+  alreadyOptimized: boolean;
+  original: {
+    filePath: string;
+    mediaType: string;
+    filename: string | null;
+  };
 }): Promise<WhisperTranscriptionResult> {
   const shouldChunk =
     totalDurationSeconds !== null
@@ -186,6 +230,8 @@ async function transcribeOpenAiMediaFile({
     mediaType,
     filename,
     totalDurationSeconds,
+    alreadyOptimized,
+    original,
   });
   try {
     const result = await transcribeFileWithOpenAiDiarization({
@@ -444,16 +490,108 @@ function providerLabel(provider: DiarizationProvider): string {
   return provider === "elevenlabs" ? "ElevenLabs" : "OpenAI";
 }
 
-async function prepareOpenAiDiarizationFile({
+async function prepareDiarizationMediaFile({
   filePath,
   mediaType,
   filename,
+  providers,
   totalDurationSeconds,
 }: {
   filePath: string;
   mediaType: string;
   filename: string | null;
+  providers: DiarizationProvider[];
   totalDurationSeconds: number | null;
+}): Promise<PreparedDiarizationMedia> {
+  if (!isVideoMedia({ filePath, mediaType, filename })) {
+    return {
+      filePath,
+      mediaType,
+      filename,
+      cleanupPath: null,
+      note: null,
+      optimizedForOpenAi: false,
+    };
+  }
+  if (!(await isFfmpegAvailable())) {
+    return {
+      filePath,
+      mediaType,
+      filename,
+      cleanupPath: null,
+      note: "Diarization: local audio extraction unavailable; uploading the original video",
+      optimizedForOpenAi: false,
+    };
+  }
+
+  const optimizeForOpenAi = providers.includes("openai");
+  const bitrateKbps = optimizeForOpenAi
+    ? resolveOpenAiDiarizationBitrateKbps(totalDurationSeconds)
+    : 32;
+  const audioPath = join(tmpdir(), `summarize-diarize-audio-${randomUUID()}.mp3`);
+  let handedOff = false;
+  try {
+    await runFfmpegTranscodeToMp3({
+      inputPath: filePath,
+      outputPath: audioPath,
+      bitrateKbps,
+    });
+    handedOff = true;
+    return {
+      filePath: audioPath,
+      mediaType: "audio/mpeg",
+      filename: "audio.mp3",
+      cleanupPath: audioPath,
+      note: `Diarization: extracted audio from video as mono 16 kHz ${bitrateKbps} kbps MP3`,
+      optimizedForOpenAi: optimizeForOpenAi,
+    };
+  } catch (caught) {
+    return {
+      filePath,
+      mediaType,
+      filename,
+      cleanupPath: null,
+      note: `Diarization: local audio extraction failed; uploading the original video: ${wrapError("ffmpeg", caught).message}`,
+      optimizedForOpenAi: false,
+    };
+  } finally {
+    if (!handedOff) await fs.unlink(audioPath).catch(() => {});
+  }
+}
+
+function isVideoMedia({
+  filePath,
+  mediaType,
+  filename,
+}: {
+  filePath: string;
+  mediaType: string;
+  filename: string | null;
+}): boolean {
+  const normalizedMediaType = mediaType.trim().toLowerCase();
+  if (normalizedMediaType.startsWith("video/")) return true;
+  if (normalizedMediaType.startsWith("audio/")) return false;
+  return VIDEO_EXTENSIONS.has(extname(filename?.trim() || filePath).toLowerCase());
+}
+
+async function prepareOpenAiDiarizationFile({
+  filePath,
+  mediaType,
+  filename,
+  totalDurationSeconds,
+  alreadyOptimized,
+  original,
+}: {
+  filePath: string;
+  mediaType: string;
+  filename: string | null;
+  totalDurationSeconds: number | null;
+  alreadyOptimized: boolean;
+  original: {
+    filePath: string;
+    mediaType: string;
+    filename: string | null;
+  };
 }): Promise<{
   filePath: string;
   mediaType: string;
@@ -464,6 +602,19 @@ async function prepareOpenAiDiarizationFile({
   const stat = await fs.stat(filePath);
   if (stat.size <= MAX_OPENAI_UPLOAD_BYTES) {
     return { filePath, mediaType, filename, cleanupPath: null, note: null };
+  }
+  if (alreadyOptimized) {
+    const originalStat = await fs.stat(original.filePath);
+    if (originalStat.size <= MAX_OPENAI_UPLOAD_BYTES) {
+      return {
+        ...original,
+        cleanupPath: null,
+        note: "OpenAI diarization: extracted audio exceeded the upload limit; using the smaller original video",
+      };
+    }
+    throw new Error(
+      "OpenAI diarization audio remains above the upload limit after local extraction; use ElevenLabs or a shorter recording",
+    );
   }
   if (!(await isFfmpegAvailable())) {
     throw new Error(
