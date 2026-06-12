@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -12,24 +12,20 @@ import { refreshFree } from "../refresh-free.js";
 import { createCacheStateFromConfig, refreshCacheStoreIfMissing } from "../run/cache-state.js";
 import { resolveExecutableInPath } from "../run/env.js";
 import { createMediaCacheFromConfig } from "../run/media-cache-state.js";
-import type { SlideSettings } from "../slides/index.js";
 import { resolvePackageVersion } from "../version.js";
 import { AuthRateLimiter } from "./auth-rate-limit.js";
-import { type DaemonRequestedMode } from "./auto-mode.js";
 import { daemonConfigTokens, isAuthorizedDaemonToken, type DaemonConfig } from "./config.js";
 import { DAEMON_HOST, DAEMON_PORT_DEFAULT } from "./constants.js";
 import { resolveDaemonLogPaths } from "./launchd.js";
 import { ProcessRegistry } from "./process-registry.js";
 import { handleAdminRoutes } from "./server-admin-routes.js";
 import { handleAgentRoute } from "./server-agent-route.js";
+import { corsHeaders, json, readBearerToken, readCorsHeaders, text } from "./server-http.js";
 import {
-  clampNumber,
-  corsHeaders,
-  json,
-  readBearerToken,
-  readCorsHeaders,
-  text,
-} from "./server-http.js";
+  buildActiveSummarizeKey,
+  DaemonRuntime,
+  resolveDaemonMaxActiveSummaries,
+} from "./server-runtime.js";
 import { handleSessionRoutes } from "./server-session-routes.js";
 import {
   createSession,
@@ -54,100 +50,9 @@ import { assertDaemonUrlFetchAllowed, createDaemonUrlFetchGuard } from "./url-fe
 import { isWindowsContainerEnvironment } from "./windows-container.js";
 
 export { corsHeaders, isTrustedOrigin } from "./server-http.js";
+export { closeAfterActiveTasks, resolveDaemonMaxActiveSummaries } from "./server-runtime.js";
 
 const DAEMON_SHUTDOWN_ACTIVE_SESSION_GRACE_MS = 5000;
-const DAEMON_MAX_ACTIVE_SUMMARIES_DEFAULT = 4;
-const DAEMON_MAX_ACTIVE_SUMMARIES_LIMIT = 32;
-
-function buildActiveSummarizeKey(request: {
-  pageUrl: string;
-  title: string | null;
-  textContent: string;
-  truncated: boolean;
-  modelOverride: string | null;
-  lengthRaw: string;
-  languageRaw: string;
-  promptOverride: string | null;
-  noCache: boolean;
-  mode: DaemonRequestedMode;
-  maxCharacters: number | null;
-  format: "text" | "markdown";
-  overrides: unknown;
-  slidesSettings: SlideSettings | null;
-}) {
-  const textHash = request.textContent
-    ? createHash("sha256").update(request.textContent).digest("hex")
-    : "";
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        pageUrl: request.pageUrl,
-        title: request.title,
-        textHash,
-        truncated: request.truncated,
-        modelOverride: request.modelOverride,
-        lengthRaw: request.lengthRaw,
-        languageRaw: request.languageRaw,
-        promptOverride: request.promptOverride,
-        noCache: request.noCache,
-        mode: request.mode,
-        maxCharacters: request.maxCharacters,
-        format: request.format,
-        overrides: request.overrides,
-        slidesSettings: request.slidesSettings,
-      }),
-    )
-    .digest("hex");
-}
-
-export function resolveDaemonMaxActiveSummaries(env: Record<string, string | undefined>): number {
-  const raw = env.SUMMARIZE_DAEMON_MAX_ACTIVE_SUMMARIES?.trim();
-  if (!raw) return DAEMON_MAX_ACTIVE_SUMMARIES_DEFAULT;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return DAEMON_MAX_ACTIVE_SUMMARIES_DEFAULT;
-  return clampNumber(Math.floor(parsed), 1, DAEMON_MAX_ACTIVE_SUMMARIES_LIMIT);
-}
-
-async function drainActiveTasks(activeTasks: Set<Promise<void>>): Promise<void> {
-  while (activeTasks.size > 0) {
-    const tasks = [...activeTasks];
-    await Promise.allSettled(tasks);
-    for (const task of tasks) {
-      activeTasks.delete(task);
-    }
-  }
-}
-
-export async function closeAfterActiveTasks({
-  activeTasks,
-  timeoutMs,
-  close,
-}: {
-  activeTasks: Set<Promise<void>>;
-  timeoutMs: number;
-  close: () => void;
-}): Promise<boolean> {
-  const drainPromise = drainActiveTasks(activeTasks);
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let drained = false;
-  try {
-    drained = await Promise.race([
-      drainPromise.then(() => true),
-      new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => resolve(false), timeoutMs);
-        timer.unref?.();
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-  if (drained) {
-    close();
-  } else {
-    void drainPromise.then(close).catch(() => {});
-  }
-  return drained;
-}
 
 export function resolveDaemonListenHost(env: Record<string, string | undefined>): string {
   return process.platform === "win32" && isWindowsContainerEnvironment(env)
@@ -231,37 +136,11 @@ export async function runDaemonServer({
   setProcessObserver(processRegistry.createObserver());
   const listenHost = resolveDaemonListenHost(env);
 
-  const sessions = new Map<string, Session>();
-  const refreshSessions = new Map<string, Session>();
-  const activeTasks = new Set<Promise<void>>();
-  const maxActiveSummaries = resolveDaemonMaxActiveSummaries(env);
-  let activeSummarizeCount = 0;
-  let activeRefreshSessionId: string | null = null;
-  const activeSummarizeRequests = new Map<string, string>();
+  const runtime = new DaemonRuntime({
+    maxActiveSummaries: resolveDaemonMaxActiveSummaries(env),
+  });
+  const { sessions, refreshSessions, maxActiveSummaries } = runtime;
   const authLimiter = new AuthRateLimiter();
-
-  const reserveSummarizeSlot = (): (() => void) | null => {
-    if (activeSummarizeCount >= maxActiveSummaries) return null;
-    activeSummarizeCount += 1;
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      activeSummarizeCount = Math.max(0, activeSummarizeCount - 1);
-    };
-  };
-
-  const trackSummarizeTask = (task: Promise<unknown>, releaseSlot: () => void): void => {
-    const tracked = task.then(
-      () => undefined,
-      () => undefined,
-    );
-    activeTasks.add(tracked);
-    void tracked.finally(() => {
-      activeTasks.delete(tracked);
-      releaseSlot();
-    });
-  };
 
   const server = http.createServer((req, res) => {
     const requestTask = (async () => {
@@ -337,14 +216,13 @@ export async function runDaemonServer({
       }
 
       if (req.method === "POST" && pathname === "/v1/refresh-free") {
-        if (activeRefreshSessionId) {
-          json(res, 200, { ok: true, id: activeRefreshSessionId, running: true }, cors);
+        if (runtime.activeRefreshSessionId) {
+          json(res, 200, { ok: true, id: runtime.activeRefreshSessionId, running: true }, cors);
           return;
         }
 
         const session = createSession(() => randomUUID());
-        refreshSessions.set(session.id, session);
-        activeRefreshSessionId = session.id;
+        runtime.registerRefreshSession(session);
         json(res, 200, { ok: true, id: session.id }, cors);
 
         void (async () => {
@@ -362,9 +240,7 @@ export async function runDaemonServer({
             pushToSession(session, { event: "error", data: { message } }, onSessionEvent);
             console.error("[summarize-daemon] refresh-free failed", error);
           } finally {
-            if (activeRefreshSessionId === session.id) {
-              activeRefreshSessionId = null;
-            }
+            runtime.finishRefreshSession(session.id);
             setTimeout(() => {
               refreshSessions.delete(session.id);
               endSession(session);
@@ -419,17 +295,13 @@ export async function runDaemonServer({
         const includeContentLog = daemonLogger.enabled && diagnostics.includeContent;
         const activeRequestKey = extractOnly ? null : buildActiveSummarizeKey(request);
         if (activeRequestKey) {
-          const activeRequestId = activeSummarizeRequests.get(activeRequestKey);
-          const activeSession = activeRequestId ? sessions.get(activeRequestId) : null;
-          if (activeRequestId && activeSession && !activeSession.done) {
-            json(res, 200, { ok: true, id: activeRequestId, coalesced: true }, cors);
+          const activeSession = runtime.findActiveSummarizeSession(activeRequestKey);
+          if (activeSession) {
+            json(res, 200, { ok: true, id: activeSession.id, coalesced: true }, cors);
             return;
           }
-          if (activeRequestId && !activeSession) {
-            activeSummarizeRequests.delete(activeRequestKey);
-          }
         }
-        const releaseSummarizeSlot = reserveSummarizeSlot();
+        const releaseSummarizeSlot = runtime.reserveSummarizeSlot();
         if (!releaseSummarizeSlot) {
           json(
             res,
@@ -446,7 +318,7 @@ export async function runDaemonServer({
             session.slidesRequested = Boolean(slidesSettings);
             sessions.set(session.id, session);
             if (activeRequestKey) {
-              activeSummarizeRequests.set(activeRequestKey, session.id);
+              runtime.registerActiveSummarizeRequest(activeRequestKey, session.id);
             }
           }
 
@@ -494,7 +366,7 @@ export async function runDaemonServer({
                 json(res, 500, { ok: false, error: message }, cors);
               }
             })();
-            trackSummarizeTask(extractTask, releaseSummarizeSlot);
+            runtime.trackSummarizeTask(extractTask, releaseSummarizeSlot);
             await extractTask;
             return;
           }
@@ -568,18 +440,14 @@ export async function runDaemonServer({
           });
           if (activeRequestKey) {
             void summaryTask.finally(() => {
-              if (activeSummarizeRequests.get(activeRequestKey) === activeSession.id) {
-                activeSummarizeRequests.delete(activeRequestKey);
-              }
+              runtime.clearActiveSummarizeRequest(activeRequestKey, activeSession.id);
             });
           }
-          trackSummarizeTask(summaryTask, releaseSummarizeSlot);
+          runtime.trackSummarizeTask(summaryTask, releaseSummarizeSlot);
           return;
         } catch (error) {
           if (activeRequestKey && session) {
-            if (activeSummarizeRequests.get(activeRequestKey) === session.id) {
-              activeSummarizeRequests.delete(activeRequestKey);
-            }
+            runtime.clearActiveSummarizeRequest(activeRequestKey, session.id);
             const message = error instanceof Error ? error.message : String(error);
             pushToSession(session, { event: "error", data: { message } }, onSessionEvent);
             if (session.slidesRequested) {
@@ -625,8 +493,7 @@ export async function runDaemonServer({
         // ignore
       }
     });
-    activeTasks.add(requestTask);
-    void requestTask.finally(() => activeTasks.delete(requestTask));
+    runtime.trackRequestTask(requestTask);
   });
 
   try {
@@ -663,8 +530,7 @@ export async function runDaemonServer({
       }
     });
   } finally {
-    await closeAfterActiveTasks({
-      activeTasks,
+    await runtime.closeAfterActiveTasks({
       timeoutMs: DAEMON_SHUTDOWN_ACTIVE_SESSION_GRACE_MS,
       close: () => cacheState.store?.close(),
     });
