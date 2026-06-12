@@ -6,23 +6,20 @@ import {
   type SlidesLayout,
 } from "../../lib/settings";
 import { generateToken } from "../../lib/token";
-import { syncNavigationWithActiveTab } from "./active-tab-sync";
 import { createAppearanceControls } from "./appearance-controls";
 import { createSidepanelBgMessageRuntime } from "./bg-message-runtime";
 import { bindSidepanelUiEvents } from "./bindings";
 import { bootstrapSidepanel } from "./bootstrap-runtime";
-import { createSidepanelChatRuntime } from "./chat-runtime";
 import { createSidepanelDom } from "./dom";
 import { createSidepanelInteractionRuntime } from "./interaction-runtime";
 import { createMetricsController } from "./metrics-controller";
-import { createNavigationRuntime } from "./navigation-runtime";
 import type { PanelCachePayload } from "./panel-cache";
 import { createPanelMessagingRuntime } from "./panel-messaging";
 import { createPanelStateStore } from "./panel-state-store";
-import { createPanelViewRuntime } from "./panel-view-runtime";
 import { createSidepanelPresentationRuntime } from "./presentation-runtime";
 import { selectRetainedSlideSummaryMarkdown } from "./retained-slide-summary";
 import { createSidepanelRunRuntime } from "./run-runtime";
+import { createSidepanelSessionRuntime } from "./session-runtime";
 import { createSetupControlsRuntime } from "./setup-controls-runtime";
 import { friendlyFetchError } from "./setup-runtime";
 import { resolveSlidesInputMode } from "./slides-session-state";
@@ -38,18 +35,8 @@ const {
   advancedSettingsEl,
   advancedSettingsSummaryEl,
   autoToggleRoot,
-  automationNoticeActionBtn,
-  automationNoticeEl,
-  automationNoticeMessageEl,
-  automationNoticeTitleEl,
-  chatContainerEl,
-  chatContextStatusEl,
-  chatDockEl,
   chatInputEl,
-  chatJumpBtn,
-  chatMessagesEl,
   chatMetricsSlotEl,
-  chatQueueEl,
   chatSendBtn,
   clearBtn,
   drawerEl,
@@ -59,7 +46,6 @@ const {
   lengthRoot,
   lineLooseBtn,
   lineTightBtn,
-  mainEl,
   metricsEl,
   metricsHomeEl,
   modelCustomEl,
@@ -69,7 +55,6 @@ const {
   modelStatusEl,
   pickersRoot,
   refreshBtn,
-  renderEl,
   renderMarkdownHostEl,
   setupEl,
   sizeLgBtn,
@@ -145,7 +130,6 @@ const presentationRuntime = createSidepanelPresentationRuntime({
   send,
 });
 const {
-  markdown: md,
   isStreaming,
   panelCacheController,
   feedback: {
@@ -156,7 +140,7 @@ const {
     showSlideNotice,
   },
   phase: { setPhase },
-  summary: { renderMarkdown, sendSummarize, viewRuntime: summaryViewRuntime },
+  summary: { renderMarkdown, sendSummarize },
   slides: {
     applySlidesPayload,
     controlRuntime: summarizeControlRuntime,
@@ -176,7 +160,6 @@ const {
   resolveActiveSlidesRunId,
   startSlidesStreamForRunId,
   startSlidesSummaryStreamForRunId,
-  stopSlidesStream,
 } = slidesRuntime;
 const {
   queueSlidesRender,
@@ -187,78 +170,22 @@ const {
 } = slidesViewRuntime;
 const { applySlidesLayout, setSlidesLayout } = summarizeControlRuntime;
 
-const navigationRuntime = createNavigationRuntime();
-
-const chatRuntime = createSidepanelChatRuntime({
+const {
+  applyPanelCache,
+  bindRunActions,
+  chatRuntime,
+  clearCurrentView,
+  navigationRuntime,
+  resetPanelView,
+  syncWithActiveTab,
+} = createSidepanelSessionRuntime({
+  dom,
   panelState,
   dispatchPanelState: panelStateStore.dispatch,
-  markdown: md,
-  mainEl,
-  renderEl,
-  chatContainerEl,
-  chatContextStatusEl,
-  chatDockEl,
-  chatInputEl,
-  chatJumpBtn,
-  chatMessagesEl,
-  chatQueueEl,
-  chatSendBtn,
-  automationNoticeActionBtn,
-  automationNoticeEl,
-  automationNoticeMessageEl,
-  automationNoticeTitleEl,
-  getActiveTabId,
-  getActiveTabUrl,
-  navigationRuntime,
+  metricsController,
+  presentationRuntime,
   send,
-  setStatus: (value) => {
-    headerController.setStatus(value);
-  },
-  clearErrors: () => {
-    errorController.clearAll();
-  },
-  showInlineError: (message) => {
-    errorController.showInlineError(message);
-  },
-  clearChatMetrics: () => {
-    metricsController.clearForMode("chat");
-  },
-  setChatMetricsMode: () => {
-    metricsController.setActiveMode("chat");
-  },
-  setLastActionChat: () => {
-    updatePanelSession({ lastAction: "chat" });
-  },
-  renderInlineSlides: () => {
-    renderInlineSlides(chatMessagesEl);
-  },
-  seekToTimestamp: (seconds) => {
-    void send({ type: "panel:seek", seconds });
-  },
 });
-
-const panelViewRuntime = createPanelViewRuntime({
-  summaryView: summaryViewRuntime,
-  resetChatState: chatRuntime.reset,
-});
-const { applyPanelCache, resetPanelView } = panelViewRuntime;
-
-const syncWithActiveTab = () =>
-  syncNavigationWithActiveTab({
-    navigationRuntime,
-    getCurrentSource: () => panelState.currentSource,
-    setCurrentSource: (source) => {
-      panelStateStore.dispatch({ type: "source", source });
-    },
-    resetForNavigation: (preserveChat) => {
-      setPhase("idle");
-      resetPanelView({ preserveChat });
-      headerController.setBaseSubtitle("");
-    },
-    setBaseTitle: (title) => {
-      headerController.setBaseTitle(title);
-    },
-  });
 
 const { autoSummarizeRuntime, plannedSlidesRuntime, streamController, summaryRunRuntime } =
   createSidepanelRunRuntime({
@@ -277,19 +204,7 @@ const { autoSummarizeRuntime, plannedSlidesRuntime, streamController, summaryRun
     syncWithActiveTab,
   });
 
-async function clearCurrentView() {
-  panelStateStore.dispatch({ type: "retained-slide-summary", value: null });
-  if (panelState.chat.streaming) {
-    chatRuntime.requestAbort("Cleared");
-  }
-  streamController.abort();
-  stopSlidesStream();
-  resetPanelView();
-  await chatRuntime.clearHistoryForActiveTab();
-  panelCacheController.scheduleSync();
-  headerController.setStatus("");
-  setPhase("idle");
-}
+bindRunActions({ abortSummaryStream: streamController.abort });
 
 registerSidepanelTestHooks({
   applySlidesPayload,
