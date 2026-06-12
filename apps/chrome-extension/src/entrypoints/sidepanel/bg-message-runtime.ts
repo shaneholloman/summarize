@@ -95,10 +95,6 @@ export function createSidepanelBgMessageRuntime(options: {
   setSlidesContextPending: (value: boolean) => void;
   setSlidesTranscriptTimedText: (value: string | null) => void;
   updateSlidesTextState: () => void;
-  getSlidesSummaryState: () => {
-    complete: boolean;
-    markdown: string;
-  };
   updateSlideSummaryFromMarkdown: (
     markdown: string,
     opts?: {
@@ -189,7 +185,7 @@ export function createSidepanelBgMessageRuntime(options: {
             slidesContext.ok ? (slidesContext.transcriptTimedText ?? null) : null,
           );
           options.updateSlidesTextState();
-          const slidesSummary = options.getSlidesSummaryState();
+          const slidesSummary = options.panelState.slidesSummary;
           const summarySource =
             slidesSummary.complete && slidesSummary.markdown.trim()
               ? slidesSummary.markdown

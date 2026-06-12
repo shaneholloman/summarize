@@ -46,19 +46,6 @@ type SummaryViewRuntimeOpts = {
   refreshSummarizeControl: () => void;
   resetChatState: () => void;
   setSlidesTranscriptTimedText: (value: string | null) => void;
-  getSlidesSummaryState: () => {
-    runId: string | null;
-    markdown: string;
-    complete: boolean;
-    model: string | null;
-  };
-  setSlidesSummaryState: (payload: {
-    markdown: string;
-    complete: boolean;
-    model: string | null;
-  }) => void;
-  clearSlidesSummaryPending: () => void;
-  clearSlidesSummaryError: () => void;
   updateSlidesTextState: () => void;
   requestSlidesContext: () => void | Promise<void>;
   requestSlidesCapture: () => void;
@@ -130,7 +117,7 @@ export function createSummaryViewRuntime(opts: SummaryViewRuntimeOpts) {
     const tabId = opts.panelState.activeRun.tabId ?? opts.panelState.navigation.activeTabId;
     const url = opts.panelState.currentSource?.url ?? opts.panelState.navigation.activeTabUrl;
     if (!tabId || !url) return null;
-    const slidesSummary = opts.getSlidesSummaryState();
+    const slidesSummary = opts.panelState.slidesSummary;
     const hasSlidesSummaryState = Boolean(slidesSummary.runId || slidesSummary.markdown.trim());
     return {
       tabId,
@@ -168,18 +155,21 @@ export function createSummaryViewRuntime(opts: SummaryViewRuntimeOpts) {
       },
       summaryFromCache: payload.summaryFromCache ?? null,
     });
-    opts.setSlidesSummaryState({
-      markdown: payload.slidesSummaryMarkdown ?? "",
-      complete:
-        payload.slidesSummaryComplete ?? Boolean((payload.slidesSummaryMarkdown ?? "").trim()),
-      model:
-        payload.slidesSummaryModel ??
-        opts.panelState.lastMeta.model ??
-        opts.panelState.ui?.settings.model ??
-        null,
+    dispatch({
+      type: "slides-summary-update",
+      value: {
+        markdown: payload.slidesSummaryMarkdown ?? "",
+        complete:
+          payload.slidesSummaryComplete ?? Boolean((payload.slidesSummaryMarkdown ?? "").trim()),
+        model:
+          payload.slidesSummaryModel ??
+          opts.panelState.lastMeta.model ??
+          opts.panelState.ui?.settings.model ??
+          null,
+        pending: null,
+        hadError: false,
+      },
     });
-    opts.clearSlidesSummaryPending();
-    opts.clearSlidesSummaryError();
     opts.headerController.setBaseTitle(payload.title || payload.url || "Summarize");
     opts.headerController.setBaseSubtitle(
       buildIdleSubtitle({

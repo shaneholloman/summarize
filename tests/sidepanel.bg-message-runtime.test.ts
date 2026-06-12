@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSidepanelBgMessageRuntime } from "../apps/chrome-extension/src/entrypoints/sidepanel/bg-message-runtime";
+import { createInitialPanelState } from "../apps/chrome-extension/src/entrypoints/sidepanel/panel-state-store";
 import type { BgToPanel, UiState } from "../apps/chrome-extension/src/lib/panel-contracts";
+
+function buildPanelState() {
+  const panelState = createInitialPanelState();
+  panelState.currentSource = { url: "https://www.youtube.com/watch?v=current", title: null };
+  return panelState;
+}
 
 function createRuntime(
   overrides: Partial<Parameters<typeof createSidepanelBgMessageRuntime>[0]> = {},
 ) {
   const options = {
-    panelState: {
-      ui: null,
-      error: null,
-      chat: { messages: [], streaming: false },
-      currentSource: { url: "https://www.youtube.com/watch?v=current" },
-      summaryMarkdown: null,
-      slides: null,
-    },
+    panelState: buildPanelState(),
     applyUiState: vi.fn(),
     setStatus: vi.fn(),
     isStreaming: vi.fn(() => false),
@@ -30,7 +30,6 @@ function createRuntime(
     setSlidesContextPending: vi.fn(),
     setSlidesTranscriptTimedText: vi.fn(),
     updateSlidesTextState: vi.fn(),
-    getSlidesSummaryState: vi.fn(() => ({ complete: false, markdown: "" })),
     updateSlideSummaryFromMarkdown: vi.fn(),
     renderInlineSlidesFallback: vi.fn(),
     schedulePanelCacheSync: vi.fn(),
@@ -216,16 +215,16 @@ describe("sidepanel background message runtime", () => {
   });
 
   it("uses slide context to rebuild rendered fallback text", () => {
+    const panelState = buildPanelState();
+    panelState.summaryMarkdown = "Summary markdown";
+    panelState.slides = {} as never;
+    panelState.slidesSummary = {
+      ...panelState.slidesSummary,
+      complete: true,
+      markdown: "Slide markdown",
+    };
     const { runtime, options } = createRuntime({
-      panelState: {
-        ui: null,
-        error: null,
-        chat: { messages: [], streaming: false },
-        currentSource: { url: "https://www.youtube.com/watch?v=current" },
-        summaryMarkdown: "Summary markdown",
-        slides: {},
-      },
-      getSlidesSummaryState: vi.fn(() => ({ complete: true, markdown: "Slide markdown" })),
+      panelState,
     });
 
     runtime.handle({

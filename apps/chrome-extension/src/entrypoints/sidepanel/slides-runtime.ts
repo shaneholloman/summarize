@@ -61,6 +61,7 @@ export function createSidepanelSlidesRuntime({
 }) {
   const slidesSummaryController = createSlidesSummaryController({
     getToken,
+    dispatchPanelState,
     friendlyFetchError,
     panelUrlsMatch,
     getPanelState: () => panelState,
@@ -158,7 +159,6 @@ export function createSidepanelSlidesRuntime({
     handleSlidesStatus: slidesRunRuntime.handleSlidesStatus,
     maybeApplyPendingSlidesSummary,
     slidesHydrator,
-    slidesSummaryController,
     isActiveSlidesRunLocal: slidesRunRuntime.isActiveSlidesRunLocal,
     maybeStartPendingSlidesForUrl: slidesRunRuntime.maybeStartPendingSlidesForUrl,
     rememberPendingSlidesRun: slidesRunRuntime.rememberPendingSlidesRun,

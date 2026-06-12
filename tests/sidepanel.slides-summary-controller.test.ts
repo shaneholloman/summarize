@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createInitialPanelState } from "../apps/chrome-extension/src/entrypoints/sidepanel/panel-state-store";
 import { createSlidesSummaryController } from "../apps/chrome-extension/src/entrypoints/sidepanel/slides-summary-controller";
 import type { StreamControllerOptions } from "../apps/chrome-extension/src/entrypoints/sidepanel/stream-controller";
 import type { PanelState, UiState } from "../apps/chrome-extension/src/entrypoints/sidepanel/types";
@@ -49,19 +50,11 @@ function buildUiState(): UiState {
 }
 
 function buildPanelState(): PanelState {
-  return {
-    ui: buildUiState(),
-    runId: null,
-    slidesRunId: null,
-    currentSource: { url: "https://example.com/video", title: "Video" },
-    lastMeta: { inputSummary: null, model: "auto", modelLabel: "auto" },
-    summaryMarkdown: null,
-    summaryFromCache: null,
-    slides: null,
-    phase: "idle",
-    error: null,
-    chat: { messages: [], streaming: false },
-  };
+  const state = createInitialPanelState();
+  state.ui = buildUiState();
+  state.currentSource = { url: "https://example.com/video", title: "Video" };
+  state.lastMeta = { inputSummary: null, model: "auto", modelLabel: "auto" };
+  return state;
 }
 
 function addSlides(panelState: PanelState): void {

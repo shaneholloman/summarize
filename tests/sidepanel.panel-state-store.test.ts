@@ -107,6 +107,40 @@ describe("sidepanel panel state store", () => {
     expect(store.state.slidesLifecycle).toEqual({ activeRun: null, plannedRun: null });
   });
 
+  it("owns slides summary lifecycle state", () => {
+    const store = createPanelStateStore();
+
+    store.dispatch({
+      type: "slides-summary-update",
+      value: {
+        runId: "slides-1",
+        url: "https://example.com/video",
+        markdown: "Summary",
+        complete: true,
+        model: "test-model",
+      },
+    });
+
+    expect(store.state.slidesSummary).toMatchObject({
+      runId: "slides-1",
+      url: "https://example.com/video",
+      markdown: "Summary",
+      complete: true,
+      model: "test-model",
+    });
+
+    store.dispatch({ type: "slides-summary-reset" });
+    expect(store.state.slidesSummary).toEqual({
+      runId: null,
+      url: null,
+      markdown: "",
+      pending: null,
+      hadError: false,
+      complete: false,
+      model: null,
+    });
+  });
+
   it("updates slides session state and advances request identity", () => {
     const store = createPanelStateStore();
 

@@ -1,4 +1,5 @@
 import { buildSlidePresentation } from "../../lib/slides-presentation";
+import { applyPanelStateAction, type PanelStateAction } from "./panel-state-store";
 import { resolveSlidesLengthArg } from "./slides-state";
 import type { SlideSummarySource } from "./slides-text-controller";
 import { createStreamController } from "./stream-controller";
@@ -13,6 +14,7 @@ type SlidesSummarySnapshot = {
 
 type SlidesSummaryControllerOptions = {
   getToken: () => Promise<string>;
+  dispatchPanelState?: (action: PanelStateAction) => void;
   friendlyFetchError: (error: unknown, fallback: string) => string;
   panelUrlsMatch: (left: string | null | undefined, right: string | null | undefined) => boolean;
   getPanelState: () => PanelState;
@@ -32,32 +34,20 @@ type SlidesSummaryControllerOptions = {
   renderInlineSlidesFallback: () => void;
 };
 
-type SlidesSummaryState = {
-  runId: string | null;
-  url: string | null;
-  markdown: string;
-  pending: string | null;
-  hadError: boolean;
-  complete: boolean;
-  model: string | null;
-};
-
-function buildInitialState(): SlidesSummaryState {
-  return {
-    runId: null,
-    url: null,
-    markdown: "",
-    pending: null,
-    hadError: false,
-    complete: false,
-    model: null,
-  };
-}
-
 export function createSlidesSummaryController(options: SlidesSummaryControllerOptions) {
-  let state = buildInitialState();
   let activeGeneration = 0;
 
+  const dispatch = (action: PanelStateAction) => {
+    if (options.dispatchPanelState) {
+      options.dispatchPanelState(action);
+    } else {
+      applyPanelStateAction(options.getPanelState(), action);
+    }
+  };
+  const getState = () => options.getPanelState().slidesSummary;
+  const updateState = (value: Partial<PanelState["slidesSummary"]>) => {
+    dispatch({ type: "slides-summary-update", value });
+  };
   const isCurrentGeneration = (generation: number) => generation === activeGeneration;
 
   const getEffectiveInputMode = () => options.getInputModeOverride() ?? options.getInputMode();
@@ -68,14 +58,15 @@ export function createSlidesSummaryController(options: SlidesSummaryControllerOp
 
   const applyMarkdown = (markdown: string) => {
     if (!markdown.trim()) return;
+    const state = getState();
     const currentUrl = getCurrentUrl();
     if (state.url && currentUrl && !options.panelUrlsMatch(state.url, currentUrl)) return;
     if (!options.getSlidesEnabled()) {
-      state.pending = markdown;
+      updateState({ pending: markdown });
       return;
     }
     if (getEffectiveInputMode() !== "video") {
-      state.pending = markdown;
+      updateState({ pending: markdown });
       return;
     }
 
@@ -102,11 +93,12 @@ export function createSlidesSummaryController(options: SlidesSummaryControllerOp
   };
 
   const maybeApplyPending = () => {
+    const state = getState();
     if (!state.pending) return;
     const phase = options.getPanelState().phase;
     if (phase === "connecting" || phase === "streaming") return;
     const markdown = state.pending;
-    state.pending = null;
+    updateState({ pending: null });
     applyMarkdown(markdown);
   };
 
@@ -120,12 +112,12 @@ export function createSlidesSummaryController(options: SlidesSummaryControllerOp
       onMeta: (meta) => {
         if (!isCurrentGeneration(generation)) return;
         if (typeof meta.model === "string") {
-          state.model = meta.model;
+          updateState({ model: meta.model });
         }
       },
       onRender: (markdown) => {
         if (!isCurrentGeneration(generation)) return;
-        state.markdown = markdown;
+        updateState({ markdown });
         if (options.getSlidesEnabled() && getEffectiveInputMode() === "video") {
           options.updateSlideSummaryFromMarkdown(markdown, {
             preserveIfEmpty: true,
@@ -138,29 +130,32 @@ export function createSlidesSummaryController(options: SlidesSummaryControllerOp
       },
       onReset: () => {
         if (!isCurrentGeneration(generation)) return;
-        state.markdown = "";
-        state.pending = null;
-        state.hadError = false;
-        state.complete = false;
-        state.model = getFallbackModel();
+        updateState({
+          markdown: "",
+          pending: null,
+          hadError: false,
+          complete: false,
+          model: getFallbackModel(),
+        });
       },
       onError: (error) => {
         if (!isCurrentGeneration(generation)) return "";
-        state.hadError = true;
+        updateState({ hadError: true });
         return options.friendlyFetchError(error, "Slides summary failed");
       },
       onDone: () => {
         if (!isCurrentGeneration(generation)) return;
+        const state = getState();
         if (state.hadError) {
-          state.complete = false;
+          updateState({ complete: false });
           return;
         }
-        state.complete = true;
+        updateState({ complete: true });
         const markdown = state.markdown;
         if (!markdown.trim()) return;
         const phase = options.getPanelState().phase;
         if (phase === "connecting" || phase === "streaming") {
-          state.pending = markdown;
+          updateState({ pending: markdown });
           return;
         }
         applyMarkdown(markdown);
@@ -174,7 +169,7 @@ export function createSlidesSummaryController(options: SlidesSummaryControllerOp
       activeGeneration += 1;
       streamController.abort();
       streamController = createGenerationStreamController(activeGeneration);
-      state = buildInitialState();
+      dispatch({ type: "slides-summary-reset" });
       options.clearSummarySource();
     },
     start(run: RunStart) {
@@ -184,6 +179,7 @@ export function createSlidesSummaryController(options: SlidesSummaryControllerOp
       return streamController.start(run);
     },
     getSnapshot(): SlidesSummarySnapshot {
+      const state = getState();
       return {
         runId: state.runId,
         markdown: state.markdown,
@@ -192,42 +188,42 @@ export function createSlidesSummaryController(options: SlidesSummaryControllerOp
       };
     },
     getMarkdown() {
-      return state.markdown;
+      return getState().markdown;
     },
     getComplete() {
-      return state.complete;
+      return getState().complete;
     },
     getModel() {
-      return state.model;
+      return getState().model;
     },
     getRunId() {
-      return state.runId;
+      return getState().runId;
     },
     setSnapshot(payload: { markdown: string; complete: boolean; model: string | null }) {
-      state.markdown = payload.markdown;
-      state.complete = payload.complete;
-      state.model = payload.model;
+      updateState(payload);
     },
     clearPending() {
-      state.pending = null;
+      updateState({ pending: null });
     },
     clearError() {
-      state.hadError = false;
+      updateState({ hadError: false });
     },
     setRunId(value: string | null) {
-      state.runId = value;
+      updateState({ runId: value });
     },
     setUrl(value: string | null) {
-      state.url = value;
+      updateState({ url: value });
     },
     resetSummaryState() {
-      state.markdown = "";
-      state.pending = null;
-      state.hadError = false;
-      state.complete = false;
+      updateState({
+        markdown: "",
+        pending: null,
+        hadError: false,
+        complete: false,
+      });
     },
     setModel(value: string | null) {
-      state.model = value;
+      updateState({ model: value });
     },
     applyMarkdown,
     maybeApplyPending,

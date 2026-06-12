@@ -40,6 +40,15 @@ export type PanelState = {
     } | null;
     plannedRun: RunStart | null;
   };
+  slidesSummary: {
+    runId: string | null;
+    url: string | null;
+    markdown: string;
+    pending: string | null;
+    hadError: boolean;
+    complete: boolean;
+    model: string | null;
+  };
   slidesSession: SlidesSessionState;
   panelSession: {
     autoSummarize: boolean;

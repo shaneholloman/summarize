@@ -23,6 +23,8 @@ export type PanelStateAction =
     }
   | { type: "active-slides-run"; value: PanelState["slidesLifecycle"]["activeRun"] }
   | { type: "planned-slides-run"; value: PanelState["slidesLifecycle"]["plannedRun"] }
+  | { type: "slides-summary-update"; value: Partial<PanelState["slidesSummary"]> }
+  | { type: "slides-summary-reset" }
   | { type: "slides-session-update"; value: Partial<PanelState["slidesSession"]> }
   | { type: "slides-context-request-next" }
   | { type: "panel-session-update"; value: Partial<PanelState["panelSession"]> }
@@ -78,6 +80,7 @@ export function createInitialPanelState(): PanelState {
       activeRun: null,
       plannedRun: null,
     },
+    slidesSummary: createInitialSlidesSummaryState(),
     slidesSession: createInitialSlidesSessionState({
       slidesEnabled: defaultSettings.slidesEnabled,
       slidesParallel: defaultSettings.slidesParallel,
@@ -172,6 +175,19 @@ export function reducePanelState(state: PanelState, action: PanelStateAction): P
           ...state.slidesLifecycle,
           plannedRun: action.value,
         },
+      };
+    case "slides-summary-update":
+      return {
+        ...state,
+        slidesSummary: {
+          ...state.slidesSummary,
+          ...action.value,
+        },
+      };
+    case "slides-summary-reset":
+      return {
+        ...state,
+        slidesSummary: createInitialSlidesSummaryState(),
       };
     case "slides-session-update":
       return {
@@ -300,6 +316,18 @@ export function reducePanelState(state: PanelState, action: PanelStateAction): P
           : {}),
       };
   }
+}
+
+function createInitialSlidesSummaryState(): PanelState["slidesSummary"] {
+  return {
+    runId: null,
+    url: null,
+    markdown: "",
+    pending: null,
+    hadError: false,
+    complete: false,
+    model: null,
+  };
 }
 
 function updateKeyedValue<T>(

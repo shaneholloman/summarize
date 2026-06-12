@@ -359,21 +359,6 @@ const summaryViewRuntime = createSummaryViewRuntime({
   refreshSummarizeControl,
   resetChatState: chatRuntime.reset,
   setSlidesTranscriptTimedText,
-  getSlidesSummaryState: () => ({
-    runId: slidesSummaryController.getRunId(),
-    markdown: slidesSummaryController.getMarkdown(),
-    complete: slidesSummaryController.getComplete(),
-    model: slidesSummaryController.getModel(),
-  }),
-  setSlidesSummaryState: (payload) => {
-    slidesSummaryController.setSnapshot(payload);
-  },
-  clearSlidesSummaryPending: () => {
-    slidesSummaryController.clearPending();
-  },
-  clearSlidesSummaryError: () => {
-    slidesSummaryController.clearError();
-  },
   updateSlidesTextState,
   requestSlidesContext,
   requestSlidesCapture: () => {
@@ -474,9 +459,9 @@ registerSidepanelTestHooks({
       timestamp: Number.isFinite(slide.timestamp) ? slide.timestamp : null,
     })) ?? [],
   getTranscriptTimedText: () => slidesTextController.getTranscriptTimedText(),
-  getSlidesSummaryMarkdown: () => slidesSummaryController.getMarkdown(),
-  getSlidesSummaryComplete: () => slidesSummaryController.getComplete(),
-  getSlidesSummaryModel: () => slidesSummaryController.getModel(),
+  getSlidesSummaryMarkdown: () => panelState.slidesSummary.markdown,
+  getSlidesSummaryComplete: () => panelState.slidesSummary.complete,
+  getSlidesSummaryModel: () => panelState.slidesSummary.model,
   getChatEnabled: () => getPanelSession().chatEnabled,
   getSettingsHydrated: () => getPanelSession().settingsHydrated,
   setTranscriptTimedText: (value) => {
@@ -651,7 +636,6 @@ const {
   rememberPendingSlidesRun,
   resolveActiveSlidesRunId,
   slidesHydrator: activeSlidesHydrator,
-  slidesSummaryController,
   startSlidesStream,
   startSlidesStreamForRunId,
   startSlidesSummaryStreamForRunId,
@@ -846,10 +830,6 @@ const bgMessageRuntime = createSidepanelBgMessageRuntime({
   },
   setSlidesTranscriptTimedText,
   updateSlidesTextState,
-  getSlidesSummaryState: () => ({
-    complete: slidesSummaryController.getComplete(),
-    markdown: slidesSummaryController.getMarkdown(),
-  }),
   updateSlideSummaryFromMarkdown,
   renderInlineSlidesFallback: () => {
     renderInlineSlides(renderMarkdownHostEl, { fallback: true });
