@@ -25,6 +25,7 @@ import { createHoverController, type HoverToBg } from "./background/hover-contro
 import { bindBackgroundListeners } from "./background/listeners";
 import { createPanelCacheRuntime } from "./background/panel-cache-runtime";
 import { createPanelChatRuntime } from "./background/panel-chat-runtime";
+import { createPanelMessageRouter } from "./background/panel-message-router";
 import { createBackgroundPanelRuntime } from "./background/panel-runtime";
 import {
   handlePanelClosed,
@@ -171,152 +172,118 @@ export default defineBackground(() => {
     startBrowserSlides: maybeStartBrowserSlides,
   });
 
-  const handlePanelMessage = (session: BackgroundPanelSession, raw: PanelToBg) => {
-    if (!raw || typeof raw !== "object" || typeof (raw as { type?: unknown }).type !== "string") {
-      return;
-    }
-    const type = raw.type;
-    if (type !== "panel:closed") {
-      session.panelOpen = true;
-    }
-    if (type === "panel:ping") session.panelLastPingAt = Date.now();
-
-    switch (type) {
-      case "panel:ready":
-        handlePanelReady(session, {
-          emitState: () => {
-            void emitState(session, "");
-          },
-          summarizeActiveTab: (reason) => {
-            summarizeActiveTabWithBrowserSlides(session, reason);
-          },
-        });
-        break;
-      case "panel:closed":
-        handlePanelClosed(session, {
-          clearCachedExtractsForWindow: (windowId) =>
-            panelSessionStore.clearCachedExtractsForWindow(windowId),
-        });
-        break;
-      case "panel:summarize": {
-        const refresh = Boolean((raw as { refresh?: boolean }).refresh);
-        summarizeActiveTabWithBrowserSlides(session, refresh ? "refresh" : "manual", {
-          refresh,
-          inputMode: (raw as { inputMode?: "page" | "video" }).inputMode,
-        });
-        break;
-      }
-      case "panel:cache":
-        panelCacheRuntime.store(raw);
-        break;
-      case "panel:get-cache":
-        void panelCacheRuntime.get(session, raw);
-        break;
-      case "panel:agent":
-        void panelChatRuntime.handleAgent(session, raw);
-        break;
-      case "panel:chat-history":
-        void panelChatRuntime.handleHistory(session, raw);
-        break;
-      case "panel:ping":
-        void emitState(session, "", { checkRecovery: true });
-        break;
-      case "panel:rememberUrl":
-        session.lastSummarizedUrl = (raw as { url: string }).url;
-        session.inflightUrl = null;
-        break;
-      case "panel:setAuto":
-        void (async () => {
-          await handlePanelSetAuto({
-            value: (raw as { value: boolean }).value,
-            patchSettings,
-            emitState: () => {
-              void emitState(session, "");
-            },
-            summarizeActiveTab: (reason) => {
-              summarizeActiveTabWithBrowserSlides(session, reason);
-            },
-          });
-        })();
-        break;
-      case "panel:setLength":
-        void (async () => {
-          await handlePanelSetLength({
-            value: (raw as { value: string }).value,
-            loadSettings,
-            patchSettings,
-            emitState: () => {
-              void emitState(session, "");
-            },
-            summarizeActiveTab: (reason) => {
-              summarizeActiveTabWithBrowserSlides(session, reason);
-            },
-          });
-        })();
-        break;
-      case "panel:slides-context":
-        void (async () => {
-          const payload = raw as { requestId?: string; url?: string };
-          const requestId = payload.requestId;
-          if (!requestId) return;
-          await handlePanelSlidesContextRequest({
-            session,
-            requestId,
-            requestedUrl:
-              typeof payload.url === "string" && payload.url.trim().length > 0
-                ? payload.url.trim()
-                : null,
-            loadSettings,
-            getActiveTab,
-            canSummarizeUrl,
-            panelSessionStore,
-            urlsMatch,
-            send: (msg) => {
-              void send(session, msg as BgToPanel);
-            },
-            fetchImpl: fetch,
-            resolveLogLevel,
-          });
-        })();
-        break;
-      case "panel:slides-local": {
-        const payload = raw as { requestId?: string; runId?: string };
-        if (!payload.requestId || !payload.runId) return;
-        const slides = takeBrowserSlidesPayload(payload.runId);
-        void send(session, {
-          type: "slides:local",
-          requestId: payload.requestId,
-          ok: Boolean(slides),
-          slides: slides ?? undefined,
-          error: slides ? undefined : "Local slides payload not found",
-        });
-        break;
-      }
-      case "panel:slides-capture":
-        void maybeStartBrowserSlides(session, {
-          inputMode: "video",
-          reason: raw.manual ? "slides-capture" : "cache-restore",
-        });
-        break;
-      case "panel:openOptions":
-        void openOptionsWindow();
-        break;
-      case "panel:seek":
-        void (async () => {
-          const seconds = (raw as { seconds?: number }).seconds;
-          if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
-            return;
-          }
-          const tab = await getActiveTab(session.windowId);
-          if (!tab?.id) return;
-          const result = await seekInTab(tab.id, Math.floor(seconds));
-          if (!result.ok) {
-            sendStatus(session, `Seek failed: ${result.error}`);
-          }
-        })();
-        break;
-    }
-  };
+  const handlePanelMessage = createPanelMessageRouter<BackgroundPanelSession>({
+    ready: (session) => {
+      handlePanelReady(session, {
+        emitState: () => {
+          void emitState(session, "");
+        },
+        summarizeActiveTab: (reason) => {
+          summarizeActiveTabWithBrowserSlides(session, reason);
+        },
+      });
+    },
+    closed: (session) => {
+      handlePanelClosed(session, {
+        clearCachedExtractsForWindow: (windowId) =>
+          panelSessionStore.clearCachedExtractsForWindow(windowId),
+      });
+    },
+    summarize: (session, reason, options) => {
+      summarizeActiveTabWithBrowserSlides(session, reason, options);
+    },
+    storeCache: (_session, message) => {
+      panelCacheRuntime.store(message);
+    },
+    getCache: (session, message) => {
+      void panelCacheRuntime.get(session, message);
+    },
+    agent: (session, message) => {
+      void panelChatRuntime.handleAgent(session, message);
+    },
+    chatHistory: (session, message) => {
+      void panelChatRuntime.handleHistory(session, message);
+    },
+    ping: (session) => {
+      void emitState(session, "", { checkRecovery: true });
+    },
+    setAuto: (session, value) => {
+      void handlePanelSetAuto({
+        value,
+        patchSettings,
+        emitState: () => {
+          void emitState(session, "");
+        },
+        summarizeActiveTab: (reason) => {
+          summarizeActiveTabWithBrowserSlides(session, reason);
+        },
+      });
+    },
+    setLength: (session, value) => {
+      void handlePanelSetLength({
+        value,
+        loadSettings,
+        patchSettings,
+        emitState: () => {
+          void emitState(session, "");
+        },
+        summarizeActiveTab: (reason) => {
+          summarizeActiveTabWithBrowserSlides(session, reason);
+        },
+      });
+    },
+    slidesContext: (session, message) => {
+      if (!message.requestId) return;
+      void handlePanelSlidesContextRequest({
+        session,
+        requestId: message.requestId,
+        requestedUrl:
+          typeof message.url === "string" && message.url.trim().length > 0
+            ? message.url.trim()
+            : null,
+        loadSettings,
+        getActiveTab,
+        canSummarizeUrl,
+        panelSessionStore,
+        urlsMatch,
+        send: (msg) => {
+          void send(session, msg as BgToPanel);
+        },
+        fetchImpl: fetch,
+        resolveLogLevel,
+      });
+    },
+    slidesLocal: (session, message) => {
+      if (!message.requestId || !message.runId) return;
+      const slides = takeBrowserSlidesPayload(message.runId);
+      void send(session, {
+        type: "slides:local",
+        requestId: message.requestId,
+        ok: Boolean(slides),
+        slides: slides ?? undefined,
+        error: slides ? undefined : "Local slides payload not found",
+      });
+    },
+    slidesCapture: (session, message) => {
+      void maybeStartBrowserSlides(session, {
+        inputMode: "video",
+        reason: message.manual ? "slides-capture" : "cache-restore",
+      });
+    },
+    openOptions: () => {
+      void openOptionsWindow();
+    },
+    seek: (session, seconds) => {
+      void (async () => {
+        const tab = await getActiveTab(session.windowId);
+        if (!tab?.id) return;
+        const result = await seekInTab(tab.id, seconds);
+        if (!result.ok) {
+          sendStatus(session, `Seek failed: ${result.error}`);
+        }
+      })();
+    },
+  });
 
   (
     globalThis as typeof globalThis & {
