@@ -2,17 +2,16 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveConfigState } from "../src/application/config-state.js";
+import { createRunConfigInput, resolveConfigState } from "../src/application/config-state.js";
 
 function resolveTestConfigState(programOpts: Record<string, unknown>) {
   return resolveConfigState({
     envForRun: { HOME: mkdtempSync(join(tmpdir(), "summarize-run-config-")) },
-    programOpts: { videoMode: "auto", embeddedVideo: "auto", ...programOpts },
-    languageExplicitlySet: false,
-    videoModeExplicitlySet: false,
-    embeddedVideoExplicitlySet: false,
-    cliFlagPresent: false,
-    cliProviderArg: null,
+    input: createRunConfigInput({
+      fast: programOpts.fast === true,
+      serviceTierRaw: typeof programOpts.serviceTier === "string" ? programOpts.serviceTier : null,
+      thinkingRaw: typeof programOpts.thinking === "string" ? programOpts.thinking : null,
+    }),
   });
 }
 
@@ -25,12 +24,11 @@ function resolveTestConfigStateWithEnv(
       HOME: mkdtempSync(join(tmpdir(), "summarize-run-config-")),
       ...envForRun,
     },
-    programOpts: { videoMode: "auto", embeddedVideo: "auto", ...programOpts },
-    languageExplicitlySet: false,
-    videoModeExplicitlySet: false,
-    embeddedVideoExplicitlySet: false,
-    cliFlagPresent: false,
-    cliProviderArg: null,
+    input: createRunConfigInput({
+      fast: programOpts.fast === true,
+      serviceTierRaw: typeof programOpts.serviceTier === "string" ? programOpts.serviceTier : null,
+      thinkingRaw: typeof programOpts.thinking === "string" ? programOpts.thinking : null,
+    }),
   });
 }
 

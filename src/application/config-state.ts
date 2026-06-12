@@ -22,53 +22,64 @@ export type ConfigState = {
   configModelLabel: string | null;
 };
 
+export type RunConfigInput = {
+  languageRaw: string | null;
+  languageExplicit: boolean;
+  videoModeRaw: string;
+  videoModeExplicit: boolean;
+  embeddedVideoModeRaw: string;
+  embeddedVideoModeExplicit: boolean;
+  cliFlagPresent: boolean;
+  cliProvider: CliProvider | null;
+  fast: boolean;
+  serviceTierRaw: string | null;
+  thinkingRaw: string | null;
+};
+
+export function createRunConfigInput(overrides: Partial<RunConfigInput> = {}): RunConfigInput {
+  return {
+    languageRaw: null,
+    languageExplicit: false,
+    videoModeRaw: "auto",
+    videoModeExplicit: false,
+    embeddedVideoModeRaw: "auto",
+    embeddedVideoModeExplicit: false,
+    cliFlagPresent: false,
+    cliProvider: null,
+    fast: false,
+    serviceTierRaw: null,
+    thinkingRaw: null,
+    ...overrides,
+  };
+}
+
 export function resolveConfigState({
   envForRun,
-  programOpts,
-  languageExplicitlySet,
-  videoModeExplicitlySet,
-  embeddedVideoExplicitlySet,
-  cliFlagPresent,
-  cliProviderArg,
+  input,
 }: {
   envForRun: Record<string, string | undefined>;
-  programOpts: Record<string, unknown>;
-  languageExplicitlySet: boolean;
-  videoModeExplicitlySet: boolean;
-  embeddedVideoExplicitlySet: boolean;
-  cliFlagPresent: boolean;
-  cliProviderArg: CliProvider | null;
+  input: RunConfigInput;
 }): ConfigState {
   const { config, path: configPath } = loadSummarizeConfig({ env: envForRun });
-  const cliLanguageRaw =
-    typeof programOpts.language === "string"
-      ? (programOpts.language as string)
-      : typeof programOpts.lang === "string"
-        ? (programOpts.lang as string)
-        : null;
   const defaultLanguageRaw = (config?.output?.language ?? config?.language ?? "auto") as string;
   const outputLanguage: OutputLanguage = parseOutputLanguage(
-    languageExplicitlySet && typeof cliLanguageRaw === "string" && cliLanguageRaw.trim().length > 0
-      ? cliLanguageRaw
-      : defaultLanguageRaw,
+    input.languageExplicit && input.languageRaw?.trim() ? input.languageRaw : defaultLanguageRaw,
   );
   const openaiWhisperUsdPerMinute = (() => {
     const value = config?.openai?.whisperUsdPerMinute;
     return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0.006;
   })();
   const videoMode = parseVideoMode(
-    videoModeExplicitlySet
-      ? (programOpts.videoMode as string)
-      : (config?.media?.videoMode ?? (programOpts.videoMode as string)),
+    input.videoModeExplicit ? input.videoModeRaw : (config?.media?.videoMode ?? input.videoModeRaw),
   );
   const embeddedVideoMode = parseEmbeddedVideoMode(
-    embeddedVideoExplicitlySet
-      ? String(programOpts.embeddedVideo ?? "auto")
-      : (config?.media?.embeddedVideo ?? String(programOpts.embeddedVideo ?? "auto")),
+    input.embeddedVideoModeExplicit
+      ? input.embeddedVideoModeRaw
+      : (config?.media?.embeddedVideo ?? input.embeddedVideoModeRaw),
   );
 
   const cliEnabledOverride: CliProvider[] | null = (() => {
-    if (!cliFlagPresent || cliProviderArg) return null;
+    if (!input.cliFlagPresent || input.cliProvider) return null;
     if (Array.isArray(config?.cli?.enabled)) return config.cli.enabled;
     return ["claude", "gemini", "codex", "agent", "openclaw", "opencode", "copilot"];
   })();
@@ -107,13 +118,11 @@ export function resolveConfigState({
 
   const openaiRequestOptionsOverride: ModelRequestOptions | undefined = (() => {
     const options: ModelRequestOptions = {};
-    const rawServiceTier =
-      typeof programOpts.serviceTier === "string" ? programOpts.serviceTier : null;
-    if (programOpts.fast === true) {
+    if (input.fast) {
       options.serviceTier = "fast";
     }
-    if (rawServiceTier) {
-      const serviceTier = parseOpenAiServiceTier(rawServiceTier, "--service-tier");
+    if (input.serviceTierRaw) {
+      const serviceTier = parseOpenAiServiceTier(input.serviceTierRaw, "--service-tier");
       if (options.serviceTier && options.serviceTier !== serviceTier) {
         throw new Error("Use either --fast or --service-tier (not both with different values).");
       }
@@ -123,9 +132,8 @@ export function resolveConfigState({
   })();
 
   const cliReasoningEffortOverride: OpenAiReasoningEffort | undefined = (() => {
-    const rawThinking = typeof programOpts.thinking === "string" ? programOpts.thinking : null;
-    if (!rawThinking) return undefined;
-    return parseOpenAiReasoningEffort(rawThinking, "--thinking");
+    if (!input.thinkingRaw) return undefined;
+    return parseOpenAiReasoningEffort(input.thinkingRaw, "--thinking");
   })();
 
   const configModelLabel = (() => {

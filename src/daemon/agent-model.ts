@@ -1,6 +1,7 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { getModel } from "@earendil-works/pi-ai";
 import { isOpenRouterBaseUrl } from "@steipete/summarize-core";
+import { createRunConfigInput } from "../application/config-state.js";
 import { resolveRunContextState } from "../application/context.js";
 import { resolveModelSelection } from "../application/model-selection.js";
 import type { CliProvider } from "../config.js";
@@ -230,12 +231,7 @@ export async function resolveAgentModel({
   } = resolveRunContextState({
     env,
     envForRun: env,
-    programOpts: { videoMode: "auto", embeddedVideo: "auto" },
-    languageExplicitlySet: false,
-    videoModeExplicitlySet: false,
-    embeddedVideoExplicitlySet: false,
-    cliFlagPresent: false,
-    cliProviderArg: null,
+    configInput: createRunConfigInput(),
   });
 
   const apiKeys: AgentApiKeys = {

@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { createRunConfigInput } from "../application/config-state.js";
 import { resolveRunContextState } from "../application/context.js";
 import { createRunFlowContexts } from "../application/flow-contexts.js";
 import {
@@ -149,12 +150,25 @@ export async function createRunnerPlan(options: {
   const runContext = resolveRunContextState({
     env,
     envForRun,
-    programOpts,
-    languageExplicitlySet,
-    videoModeExplicitlySet,
-    embeddedVideoExplicitlySet,
-    cliFlagPresent,
-    cliProviderArg,
+    configInput: createRunConfigInput({
+      languageRaw:
+        typeof programOpts.language === "string"
+          ? programOpts.language
+          : typeof programOpts.lang === "string"
+            ? programOpts.lang
+            : null,
+      languageExplicit: languageExplicitlySet,
+      videoModeRaw: typeof programOpts.videoMode === "string" ? programOpts.videoMode : "auto",
+      videoModeExplicit: videoModeExplicitlySet,
+      embeddedVideoModeRaw:
+        typeof programOpts.embeddedVideo === "string" ? programOpts.embeddedVideo : "auto",
+      embeddedVideoModeExplicit: embeddedVideoExplicitlySet,
+      cliFlagPresent,
+      cliProvider: cliProviderArg,
+      fast: programOpts.fast === true,
+      serviceTierRaw: typeof programOpts.serviceTier === "string" ? programOpts.serviceTier : null,
+      thinkingRaw: typeof programOpts.thinking === "string" ? programOpts.thinking : null,
+    }),
   });
   const {
     config,

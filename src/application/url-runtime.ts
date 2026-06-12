@@ -11,6 +11,7 @@ import {
   resolveSummaryLength,
 } from "../run/run-settings.js";
 import { scopeTranscriptCacheForDiarization } from "../shared/transcript-diarization-cache-scope.js";
+import { createRunConfigInput } from "./config-state.js";
 import { resolveRunContextState } from "./context.js";
 import { createRunFlowContexts } from "./flow-contexts.js";
 import {
@@ -120,15 +121,14 @@ export function createSummarizeUrlFlowContext(args: {
   const runContext = resolveRunContextState({
     env: envForRun,
     envForRun,
-    programOpts: {
-      videoMode: videoModeOverride ?? "auto",
-      embeddedVideo: embeddedVideoOverride ?? "auto",
-    },
-    languageExplicitlySet,
-    videoModeExplicitlySet: videoModeOverride != null,
-    embeddedVideoExplicitlySet: embeddedVideoOverride != null,
-    cliFlagPresent: false,
-    cliProviderArg: null,
+    configInput: createRunConfigInput({
+      languageRaw: typeof languageRaw === "string" ? languageRaw : null,
+      languageExplicit: languageExplicitlySet,
+      videoModeRaw: videoModeOverride ?? "auto",
+      videoModeExplicit: videoModeOverride != null,
+      embeddedVideoModeRaw: embeddedVideoOverride ?? "auto",
+      embeddedVideoModeExplicit: embeddedVideoOverride != null,
+    }),
   });
   const {
     config,

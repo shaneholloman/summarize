@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createRunConfigInput } from "../src/application/config-state.js";
 import { resolveRunContextState } from "../src/application/context.js";
 
 describe("run context state", () => {
@@ -27,12 +28,7 @@ describe("run context state", () => {
     const state = resolveRunContextState({
       env,
       envForRun: env,
-      programOpts: { videoMode: "auto", embeddedVideo: "auto" },
-      languageExplicitlySet: false,
-      videoModeExplicitlySet: false,
-      embeddedVideoExplicitlySet: false,
-      cliFlagPresent: false,
-      cliProviderArg: null,
+      configInput: createRunConfigInput(),
     });
 
     expect(state.configModelLabel).toBe("openai/gpt-5-mini");

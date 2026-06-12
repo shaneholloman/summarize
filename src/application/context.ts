@@ -1,5 +1,4 @@
-import type { CliProvider } from "../config.js";
-import { resolveConfigState, type ConfigState } from "./config-state.js";
+import { resolveConfigState, type ConfigState, type RunConfigInput } from "./config-state.js";
 import { resolveEnvState, type EnvState } from "./environment-state.js";
 
 export type RunContextState = ConfigState & EnvState;
@@ -7,30 +6,15 @@ export type RunContextState = ConfigState & EnvState;
 export function resolveRunContextState({
   env,
   envForRun,
-  programOpts,
-  languageExplicitlySet,
-  videoModeExplicitlySet,
-  embeddedVideoExplicitlySet,
-  cliFlagPresent,
-  cliProviderArg,
+  configInput,
 }: {
   env: Record<string, string | undefined>;
   envForRun: Record<string, string | undefined>;
-  programOpts: Record<string, unknown>;
-  languageExplicitlySet: boolean;
-  videoModeExplicitlySet: boolean;
-  embeddedVideoExplicitlySet: boolean;
-  cliFlagPresent: boolean;
-  cliProviderArg: CliProvider | null;
+  configInput: RunConfigInput;
 }): RunContextState {
   const configState = resolveConfigState({
     envForRun,
-    programOpts,
-    languageExplicitlySet,
-    videoModeExplicitlySet,
-    embeddedVideoExplicitlySet,
-    cliFlagPresent,
-    cliProviderArg,
+    input: configInput,
   });
   const envState = resolveEnvState({
     env,

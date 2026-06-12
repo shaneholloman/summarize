@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createRunConfigInput } from "../src/application/config-state.js";
 import { resolveRunContextState } from "../src/application/context.js";
 import {
   createExecutableRunModel,
@@ -12,12 +13,7 @@ describe("application model runtime", () => {
     const context = resolveRunContextState({
       env,
       envForRun: env,
-      programOpts: { videoMode: "auto", embeddedVideo: "auto" },
-      languageExplicitlySet: false,
-      videoModeExplicitlySet: false,
-      embeddedVideoExplicitlySet: false,
-      cliFlagPresent: false,
-      cliProviderArg: null,
+      configInput: createRunConfigInput(),
     });
 
     const spec = resolveRunModelSpec({
