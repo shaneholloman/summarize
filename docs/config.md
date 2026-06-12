@@ -403,7 +403,7 @@ Examples:
       "onlyWhenNoApiKeys": true,
       "order": ["claude", "gemini", "codex", "agent", "openclaw", "opencode", "copilot"]
     },
-    "codex": { "model": "gpt-5.2" },
+    "codex": { "model": "gpt-5.5" },
     "claude": { "binary": "/usr/local/bin/claude", "extraArgs": ["--verbose"] },
     "agent": { "binary": "/usr/local/bin/agent", "model": "gpt-5.2" },
     "openclaw": { "binary": "/usr/local/bin/openclaw", "model": "main" },
