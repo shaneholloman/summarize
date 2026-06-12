@@ -1,4 +1,3 @@
-import { isYouTubeVideoUrl } from "@steipete/summarize-core/content/url";
 import { defineBackground } from "wxt/utils/define-background";
 import { createBrowserPanelCacheStore } from "../lib/browser-panel-cache";
 import { buildDaemonRequestBody, buildSummarizeRequestBody } from "../lib/daemon-payload";
@@ -24,6 +23,7 @@ import { daemonHealth, daemonPing, friendlyFetchError } from "./background/daemo
 import { primeMediaHint, type CachedExtract } from "./background/extract-cache";
 import { createHoverController, type HoverToBg } from "./background/hover-controller";
 import { bindBackgroundListeners } from "./background/listeners";
+import { createPanelCacheRuntime } from "./background/panel-cache-runtime";
 import { createPanelChatRuntime } from "./background/panel-chat-runtime";
 import { createBackgroundPanelRuntime } from "./background/panel-runtime";
 import {
@@ -163,6 +163,13 @@ export default defineBackground(() => {
   });
   const maybeStartBrowserSlides = browserSlidesRuntime.start;
   const summarizeActiveTabWithBrowserSlides = browserSlidesRuntime.summarize;
+  const panelCacheRuntime = createPanelCacheRuntime<BackgroundPanelSession>({
+    panelSessionStore,
+    getActiveTab,
+    urlsMatch,
+    send,
+    startBrowserSlides: maybeStartBrowserSlides,
+  });
 
   const handlePanelMessage = (session: BackgroundPanelSession, raw: PanelToBg) => {
     if (!raw || typeof raw !== "object" || typeof (raw as { type?: unknown }).type !== "string") {
@@ -199,48 +206,12 @@ export default defineBackground(() => {
         });
         break;
       }
-      case "panel:cache": {
-        const payload = (raw as { cache?: PanelCachePayload }).cache;
-        if (!payload || typeof payload.tabId !== "number" || !payload.url) return;
-        panelSessionStore.storePanelCache(payload);
+      case "panel:cache":
+        panelCacheRuntime.store(raw);
         break;
-      }
-      case "panel:get-cache": {
-        const payload = raw as { requestId: string; tabId: number; url: string };
-        if (!payload.requestId || !payload.tabId || !payload.url) {
-          return;
-        }
-        const requestGeneration = `${session.activeSummaryRun?.run.id ?? ""}:${session.inflightUrl ?? ""}`;
-        void (async () => {
-          const cached = await panelSessionStore.getPanelCacheAsync(payload.tabId, payload.url);
-          const currentGeneration = `${session.activeSummaryRun?.run.id ?? ""}:${session.inflightUrl ?? ""}`;
-          if (currentGeneration !== requestGeneration) return;
-          const activeTab = await getActiveTab(session.windowId);
-          if (activeTab?.id !== payload.tabId || activeTab.url !== payload.url) return;
-          const activeRun = session.activeSummaryRun?.run ?? null;
-          const activeRunMatchesRequest =
-            activeRun &&
-            (activeRun.url.includes("#") || payload.url.includes("#")
-              ? activeRun.url === payload.url
-              : urlsMatch(activeRun.url, payload.url));
-          if (activeRunMatchesRequest && cached?.runId !== activeRun.id) return;
-          void send(session, {
-            type: "ui:cache",
-            requestId: payload.requestId,
-            ok: Boolean(cached),
-            cache: cached ?? undefined,
-          });
-          if (
-            cached?.summaryMarkdown &&
-            !cached.slides?.slides.length &&
-            cached.url &&
-            isYouTubeVideoUrl(cached.url)
-          ) {
-            void maybeStartBrowserSlides(session, { inputMode: "video", reason: "cache-restore" });
-          }
-        })();
+      case "panel:get-cache":
+        void panelCacheRuntime.get(session, raw);
         break;
-      }
       case "panel:agent":
         void panelChatRuntime.handleAgent(session, raw);
         break;
