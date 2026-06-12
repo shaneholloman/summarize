@@ -8,6 +8,10 @@ import {
   readLastSuccessfulCliProvider,
   writeLastSuccessfulCliProvider,
 } from "./cli-fallback-state.js";
+import {
+  bindSummarizeExecutionEvents,
+  type PreparedSummarizeExecution,
+} from "./execution-resources.js";
 import type {
   ExtractionResult,
   SummarizeEvent,
@@ -149,6 +153,7 @@ export async function executeSummarize(
   request: SummarizeRequest,
   runtime: SummarizeRuntime,
   events: SummarizeEventSink = ignoreEvent,
+  prepared: PreparedSummarizeExecution | null = null,
 ): Promise<SummarizeResult> {
   const now = runtime.now ?? Date.now;
   const startedAt = now();
@@ -184,12 +189,14 @@ export async function executeSummarize(
       throw new Error("Extract-only execution requires a URL input");
     }
 
-    const ctx = createSummarizeUrlFlowContext({
-      request,
-      runtime,
-      runStartedAtMs: startedAt,
-      emit,
-    });
+    const ctx = prepared
+      ? bindSummarizeExecutionEvents(prepared, emit).urlFlowContext
+      : createSummarizeUrlFlowContext({
+          request,
+          runtime,
+          runStartedAtMs: startedAt,
+          emit,
+        });
 
     if (request.input.kind === "visible-page") {
       const visiblePageResult = await executeVisiblePageSummary({

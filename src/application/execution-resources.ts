@@ -3,6 +3,8 @@ import type { MediaCache } from "../content/index.js";
 import type { SummaryStreamHandler } from "../engine/events.js";
 import type { ModelExecutorDeps } from "../engine/model-executor.js";
 import type { ExecFileFn } from "../markitdown.js";
+import { executeAssetSummary } from "../run/flows/asset/summary.js";
+import type { AssetSummaryContext } from "../run/flows/asset/types.js";
 import type {
   UrlFlowContext,
   UrlFlowEventHooks,
@@ -20,6 +22,7 @@ import {
   type RunModelRuntime,
 } from "./model-runtime.js";
 import type { ResolvedSummarizeRun, ResolvedSummarizeSpec } from "./run-spec.js";
+import type { SummarizeEventSink } from "./summarize-contracts.js";
 
 export type SummarizeModelResources = {
   context: ResolvedSummarizeRun["bindings"]["context"];
@@ -68,6 +71,75 @@ export type SummarizeExecutionResources = ReturnType<typeof createRunFlowContext
   cacheState: CacheState;
   modelResources: SummarizeModelResources;
 };
+
+export type PreparedSummarizeExecution = {
+  urlFlowContext: UrlFlowContext;
+  assetSummaryContext?: AssetSummaryContext | null;
+};
+
+function chainCallback<Args extends unknown[]>(
+  first: ((...args: Args) => void) | null | undefined,
+  second: (...args: Args) => void,
+): (...args: Args) => void {
+  return (...args) => {
+    first?.(...args);
+    second(...args);
+  };
+}
+
+export function bindSummarizeExecutionEvents(
+  prepared: PreparedSummarizeExecution,
+  emit: SummarizeEventSink,
+): PreparedSummarizeExecution {
+  const baseHooks = prepared.urlFlowContext.hooks;
+  const assetSummaryContext = prepared.assetSummaryContext
+    ? {
+        ...prepared.assetSummaryContext,
+        onSummaryCached: chainCallback(prepared.assetSummaryContext.onSummaryCached, (cached) =>
+          emit({ type: "summary-cache", cached }),
+        ),
+      }
+    : null;
+  const summarizeAsset = assetSummaryContext
+    ? (args: Parameters<typeof executeAssetSummary>[1]) =>
+        executeAssetSummary(assetSummaryContext, args)
+    : baseHooks.summarizeAsset;
+
+  return {
+    assetSummaryContext,
+    urlFlowContext: {
+      ...prepared.urlFlowContext,
+      hooks: {
+        ...baseHooks,
+        onModelChosen: chainCallback(baseHooks.onModelChosen, (modelId) =>
+          emit({ type: "model-selected", modelId }),
+        ),
+        onExtracted: chainCallback(baseHooks.onExtracted, (content) =>
+          emit({ type: "content-extracted", content }),
+        ),
+        onSlidesExtracted: chainCallback(baseHooks.onSlidesExtracted, (slides) =>
+          emit({ type: "slides-extracted", slides }),
+        ),
+        onSlidesProgress: chainCallback(baseHooks.onSlidesProgress, (text) =>
+          emit({ type: "slides-progress", text }),
+        ),
+        onSlidesDone: chainCallback(baseHooks.onSlidesDone, (result) =>
+          emit({ type: "slides-completed", ...result }),
+        ),
+        onSlideChunk: chainCallback(baseHooks.onSlideChunk, ({ slide, meta }) =>
+          emit({ type: "slide", slide, meta }),
+        ),
+        onLinkPreviewProgress: chainCallback(baseHooks.onLinkPreviewProgress, (event) =>
+          emit({ type: "extraction-progress", event }),
+        ),
+        onSummaryCached: chainCallback(baseHooks.onSummaryCached, (cached) =>
+          emit({ type: "summary-cache", cached }),
+        ),
+        summarizeAsset,
+      },
+    },
+  };
+}
 
 export function createSummarizeFlowFlags(
   spec: ResolvedSummarizeSpec,

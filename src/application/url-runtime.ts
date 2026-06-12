@@ -1,8 +1,10 @@
 import { Writable } from "node:stream";
 import type { SummaryStreamHandler } from "../engine/events.js";
-import { executeAssetSummary } from "../run/flows/asset/summary.js";
 import type { UrlFlowContext } from "../run/flows/url/types.js";
-import { createSummarizeExecutionResources } from "./execution-resources.js";
+import {
+  bindSummarizeExecutionEvents,
+  createSummarizeExecutionResources,
+} from "./execution-resources.js";
 import { resolveSummarizeRun } from "./run-spec.js";
 import type {
   SummarizeEventSink,
@@ -88,25 +90,8 @@ export function createSummarizeUrlFlowContext(args: {
       setClearProgressBeforeStdout: () => {},
       clearProgressIfCurrent: () => {},
     },
-    eventHooks: {
-      onModelChosen: (modelId) => emit({ type: "model-selected", modelId }),
-      onExtracted: (content) => emit({ type: "content-extracted", content }),
-      onSlidesExtracted: (extractedSlides) =>
-        emit({ type: "slides-extracted", slides: extractedSlides }),
-      onSlidesProgress: (text) => emit({ type: "slides-progress", text }),
-      onSlidesDone: (result) => emit({ type: "slides-completed", ...result }),
-      onSlideChunk: ({ slide, meta }) => emit({ type: "slide", slide, meta }),
-      onLinkPreviewProgress: (event) => emit({ type: "extraction-progress", event }),
-      onSummaryCached: (cached) => emit({ type: "summary-cache", cached }),
-    },
     assetSummaryOverrides: { format: "text" },
   });
 
-  return {
-    ...resources.urlFlowContext,
-    hooks: {
-      ...resources.urlFlowContext.hooks,
-      summarizeAsset: (args) => executeAssetSummary(resources.assetSummaryContext, args),
-    },
-  };
+  return bindSummarizeExecutionEvents(resources, emit).urlFlowContext;
 }
