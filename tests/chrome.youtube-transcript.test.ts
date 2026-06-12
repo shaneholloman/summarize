@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { extractYouTubeTranscriptInTab } from "../apps/chrome-extension/src/entrypoints/background/youtube-transcript";
+import { extractYouTubePageTranscript } from "../apps/chrome-extension/src/lib/youtube-page-transcript";
 
 type ExecuteScriptOptions = Parameters<typeof chrome.scripting.executeScript>[0] & {
-  func: (limit: number) => Promise<unknown>;
-  args: [number];
+  func: (limit: number, allowPanelFallback: boolean) => Promise<unknown>;
+  args: [number, boolean];
 };
 
 const originalChrome = globalThis.chrome;
@@ -15,6 +16,13 @@ const originalScrollY = (globalThis as { scrollY?: unknown }).scrollY;
 const originalScrollTo = (globalThis as { scrollTo?: unknown }).scrollTo;
 const originalPlayerResponse = (globalThis as { ytInitialPlayerResponse?: unknown })
   .ytInitialPlayerResponse;
+
+function serializePageExtractor() {
+  return Function(`return (${extractYouTubePageTranscript.toString()})`)() as (
+    limit: number,
+    allowPanelFallback: boolean,
+  ) => Promise<unknown>;
+}
 
 function installDocumentStub(overrides: Partial<Document> = {}) {
   Object.defineProperty(globalThis, "document", {
@@ -32,9 +40,11 @@ function installExecuteScriptStub() {
     configurable: true,
     value: {
       scripting: {
-        executeScript: vi.fn(async (options: ExecuteScriptOptions) => [
-          { result: await options.func(options.args[0]) },
-        ]),
+        executeScript: vi.fn(async (options: ExecuteScriptOptions) => {
+          const serialized = serializePageExtractor();
+          expect(options.func.toString()).toBe(extractYouTubePageTranscript.toString());
+          return [{ result: await serialized(...options.args) }];
+        }),
       },
     },
   });
@@ -358,5 +368,71 @@ describe("chrome youtube transcript extraction", () => {
       expect(result.transcriptTimedText).toBe("[0:01] Current response");
     }
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining("current"), expect.anything());
+  });
+
+  it("reads current player data from inline scripts when page globals are unavailable", async () => {
+    (globalThis as { ytInitialPlayerResponse?: unknown }).ytInitialPlayerResponse = undefined;
+    const playerResponse = {
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [
+            {
+              baseUrl: "https://example.com/script-caption",
+              languageCode: "en",
+              name: { simpleText: "English" },
+            },
+          ],
+        },
+      },
+      videoDetails: { lengthSeconds: "12", videoId: "test" },
+    };
+    installDocumentStub({
+      querySelectorAll: vi.fn((selector: string) =>
+        selector === "script"
+          ? [{ textContent: `var ytInitialPlayerResponse = ${JSON.stringify(playerResponse)};` }]
+          : [],
+      ) as unknown as Document["querySelectorAll"],
+    });
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: vi.fn(async () => ({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            events: [{ tStartMs: 3000, segs: [{ utf8: "Script transcript" }] }],
+          }),
+      })),
+    });
+
+    const result = await extractYouTubeTranscriptInTab(7, 10_000);
+
+    expect(result).toMatchObject({
+      ok: true,
+      transcriptTimedText: "[0:03] Script transcript",
+      durationSeconds: 12,
+    });
+  });
+
+  it("skips transcript-panel interaction when the caller disables that fallback", async () => {
+    (globalThis as { ytInitialPlayerResponse?: unknown }).ytInitialPlayerResponse = {
+      captions: {
+        playerCaptionsTracklistRenderer: {
+          captionTracks: [],
+        },
+      },
+      videoDetails: { videoId: "test" },
+    };
+    const button = { click: vi.fn(), textContent: "Show transcript" };
+    installDocumentStub({
+      querySelector: vi.fn((selector: string) =>
+        selector.includes("transcript-section") ? button : null,
+      ) as unknown as Document["querySelector"],
+      querySelectorAll: vi.fn(() => [button]) as unknown as Document["querySelectorAll"],
+    });
+
+    const result = await serializePageExtractor()(10_000, false);
+
+    expect(result).toEqual({ ok: false, error: "No YouTube caption transcript found." });
+    expect(button.click).not.toHaveBeenCalled();
   });
 });
