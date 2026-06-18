@@ -2,6 +2,11 @@
 
 ## 0.19.1 - Unreleased
 
+### Fixes
+
+- Chrome extension direct providers: accept a final SSE event without a trailing blank-line terminator.
+- Config: preserve standalone `enabled: false` values for cache, media cache, slides, and logging sections.
+
 ## 0.19.0 - 2026-06-17
 
 ### Features

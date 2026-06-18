@@ -29,6 +29,10 @@ describe("config section parser coverage", () => {
 
     expect(parseCacheConfig({}, path)).toBeUndefined();
     expect(parseCacheConfig({ cache: {} }, path)).toBeUndefined();
+    expect(parseCacheConfig({ cache: { enabled: false } }, path)).toEqual({ enabled: false });
+    expect(parseCacheConfig({ cache: { media: { enabled: false } } }, path)).toEqual({
+      media: { enabled: false },
+    });
     expect(
       parseCacheConfig(
         {
@@ -75,6 +79,7 @@ describe("config section parser coverage", () => {
 
     expect(parseSlidesConfig({}, path)).toBeUndefined();
     expect(parseSlidesConfig({ slides: {} }, path)).toBeUndefined();
+    expect(parseSlidesConfig({ slides: { enabled: false } }, path)).toEqual({ enabled: false });
     expect(
       parseSlidesConfig(
         {
@@ -235,6 +240,7 @@ describe("config section parser coverage", () => {
 
     expect(parseLoggingConfig({}, path)).toBeUndefined();
     expect(parseLoggingConfig({ logging: {} }, path)).toBeUndefined();
+    expect(parseLoggingConfig({ logging: { enabled: false } }, path)).toEqual({ enabled: false });
     expect(
       parseLoggingConfig(
         {

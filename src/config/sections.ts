@@ -7,6 +7,9 @@ import {
   parseLoggingFormat,
   parseLoggingLevel,
   parseOptionalBaseUrl,
+  parseOptionalBoolean,
+  parseOptionalNonEmptyString,
+  parseOptionalNumber,
   parseStringArray,
 } from "./parse-helpers.js";
 import type {
@@ -68,16 +71,7 @@ function parseCliProviderConfig(raw: unknown, path: string, label: string): CliP
     typeof raw.extraArgs === "undefined"
       ? undefined
       : parseStringArray(raw.extraArgs, path, `cli.${label}.extraArgs`);
-  const isolated =
-    typeof raw.isolated === "boolean"
-      ? raw.isolated
-      : typeof raw.isolated === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(
-              `Invalid config file ${path}: "cli.${label}.isolated" must be a boolean.`,
-            );
-          })();
+  const isolated = parseOptionalBoolean(raw.isolated, path, `cli.${label}.isolated`);
   return {
     ...(binaryValue ? { binary: binaryValue } : {}),
     ...(modelValue ? { model: modelValue } : {}),
@@ -94,26 +88,12 @@ function parseCliAutoFallbackConfig(
   if (!isRecord(raw)) {
     throw new Error(`Invalid config file ${path}: "cli.${label}" must be an object.`);
   }
-  const enabled =
-    typeof raw.enabled === "boolean"
-      ? raw.enabled
-      : typeof raw.enabled === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(
-              `Invalid config file ${path}: "cli.${label}.enabled" must be a boolean.`,
-            );
-          })();
-  const onlyWhenNoApiKeys =
-    typeof raw.onlyWhenNoApiKeys === "boolean"
-      ? raw.onlyWhenNoApiKeys
-      : typeof raw.onlyWhenNoApiKeys === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(
-              `Invalid config file ${path}: "cli.${label}.onlyWhenNoApiKeys" must be a boolean.`,
-            );
-          })();
+  const enabled = parseOptionalBoolean(raw.enabled, path, `cli.${label}.enabled`);
+  const onlyWhenNoApiKeys = parseOptionalBoolean(
+    raw.onlyWhenNoApiKeys,
+    path,
+    `cli.${label}.onlyWhenNoApiKeys`,
+  );
   const order =
     typeof raw.order === "undefined"
       ? undefined
@@ -131,32 +111,13 @@ function parseMediaCacheConfig(raw: unknown, path: string): MediaCacheConfig | u
     throw new Error(`Invalid config file ${path}: "cache.media" must be an object.`);
   }
   const mediaEnabled = typeof raw.enabled === "boolean" ? raw.enabled : undefined;
-  const mediaMaxRaw = raw.maxMb;
-  const mediaMaxMb =
-    typeof mediaMaxRaw === "number" && Number.isFinite(mediaMaxRaw) && mediaMaxRaw > 0
-      ? mediaMaxRaw
-      : typeof mediaMaxRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "cache.media.maxMb" must be a number.`);
-          })();
-  const mediaTtlRaw = raw.ttlDays;
-  const mediaTtlDays =
-    typeof mediaTtlRaw === "number" && Number.isFinite(mediaTtlRaw) && mediaTtlRaw > 0
-      ? mediaTtlRaw
-      : typeof mediaTtlRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "cache.media.ttlDays" must be a number.`);
-          })();
-  const mediaPath =
-    typeof raw.path === "string" && raw.path.trim().length > 0
-      ? raw.path.trim()
-      : typeof raw.path === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "cache.media.path" must be a string.`);
-          })();
+  const mediaMaxMb = parseOptionalNumber(raw.maxMb, path, "cache.media.maxMb", {
+    validate: (value) => value > 0,
+  });
+  const mediaTtlDays = parseOptionalNumber(raw.ttlDays, path, "cache.media.ttlDays", {
+    validate: (value) => value > 0,
+  });
+  const mediaPath = parseOptionalNonEmptyString(raw.path, path, "cache.media.path");
   const verifyRaw = typeof raw.verify === "string" ? raw.verify.trim().toLowerCase() : "";
   const verify =
     verifyRaw === "none" || verifyRaw === "size" || verifyRaw === "hash"
@@ -169,7 +130,11 @@ function parseMediaCacheConfig(raw: unknown, path: string): MediaCacheConfig | u
           })()
         : undefined;
 
-  return mediaEnabled || mediaMaxMb || mediaTtlDays || mediaPath || typeof verify === "string"
+  return typeof mediaEnabled === "boolean" ||
+    mediaMaxMb ||
+    mediaTtlDays ||
+    mediaPath ||
+    typeof verify === "string"
     ? {
         ...(typeof mediaEnabled === "boolean" ? { enabled: mediaEnabled } : {}),
         ...(typeof mediaMaxMb === "number" ? { maxMb: mediaMaxMb } : {}),
@@ -187,35 +152,16 @@ export function parseCacheConfig(root: Record<string, unknown>, path: string) {
     throw new Error(`Invalid config file ${path}: "cache" must be an object.`);
   }
   const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
-  const maxMbRaw = value.maxMb;
-  const maxMb =
-    typeof maxMbRaw === "number" && Number.isFinite(maxMbRaw) && maxMbRaw > 0
-      ? maxMbRaw
-      : typeof maxMbRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "cache.maxMb" must be a number.`);
-          })();
-  const ttlDaysRaw = value.ttlDays;
-  const ttlDays =
-    typeof ttlDaysRaw === "number" && Number.isFinite(ttlDaysRaw) && ttlDaysRaw > 0
-      ? ttlDaysRaw
-      : typeof ttlDaysRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "cache.ttlDays" must be a number.`);
-          })();
-  const pathValue =
-    typeof value.path === "string" && value.path.trim().length > 0
-      ? value.path.trim()
-      : typeof value.path === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "cache.path" must be a string.`);
-          })();
+  const maxMb = parseOptionalNumber(value.maxMb, path, "cache.maxMb", {
+    validate: (entry) => entry > 0,
+  });
+  const ttlDays = parseOptionalNumber(value.ttlDays, path, "cache.ttlDays", {
+    validate: (entry) => entry > 0,
+  });
+  const pathValue = parseOptionalNonEmptyString(value.path, path, "cache.path");
   const media = parseMediaCacheConfig(value.media, path);
 
-  return enabled || maxMb || ttlDays || pathValue || media
+  return typeof enabled === "boolean" || maxMb || ttlDays || pathValue || media
     ? {
         ...(typeof enabled === "boolean" ? { enabled } : {}),
         ...(typeof maxMb === "number" ? { maxMb } : {}),
@@ -253,44 +199,19 @@ export function parseSlidesConfig(root: Record<string, unknown>, path: string) {
   }
   const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
   const ocr = typeof value.ocr === "boolean" ? value.ocr : undefined;
-  const dir =
-    typeof value.dir === "string" && value.dir.trim().length > 0
-      ? value.dir.trim()
-      : typeof value.dir === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "slides.dir" must be a string.`);
-          })();
-  const sceneRaw = value.sceneThreshold;
-  const sceneThreshold =
-    typeof sceneRaw === "number" && Number.isFinite(sceneRaw) && sceneRaw >= 0.1 && sceneRaw <= 1
-      ? sceneRaw
-      : typeof sceneRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(
-              `Invalid config file ${path}: "slides.sceneThreshold" must be a number between 0.1 and 1.0.`,
-            );
-          })();
-  const maxRaw = value.max;
-  const max =
-    typeof maxRaw === "number" && Number.isFinite(maxRaw) && Number.isInteger(maxRaw) && maxRaw > 0
-      ? maxRaw
-      : typeof maxRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "slides.max" must be an integer.`);
-          })();
-  const minRaw = value.minDuration;
-  const minDuration =
-    typeof minRaw === "number" && Number.isFinite(minRaw) && minRaw >= 0
-      ? minRaw
-      : typeof minRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "slides.minDuration" must be a number.`);
-          })();
-  return enabled ||
+  const dir = parseOptionalNonEmptyString(value.dir, path, "slides.dir");
+  const sceneThreshold = parseOptionalNumber(value.sceneThreshold, path, "slides.sceneThreshold", {
+    validate: (entry) => entry >= 0.1 && entry <= 1,
+    expectation: "a number between 0.1 and 1.0",
+  });
+  const max = parseOptionalNumber(value.max, path, "slides.max", {
+    validate: (entry) => Number.isInteger(entry) && entry > 0,
+    expectation: "an integer",
+  });
+  const minDuration = parseOptionalNumber(value.minDuration, path, "slides.minDuration", {
+    validate: (entry) => entry >= 0,
+  });
+  return typeof enabled === "boolean" ||
     typeof ocr === "boolean" ||
     dir ||
     typeof sceneThreshold === "number" ||
@@ -462,33 +383,15 @@ export function parseLoggingConfig(
     typeof value.level === "undefined" ? undefined : parseLoggingLevel(value.level, path);
   const format =
     typeof value.format === "undefined" ? undefined : parseLoggingFormat(value.format, path);
-  const file =
-    typeof value.file === "string" && value.file.trim().length > 0
-      ? value.file.trim()
-      : typeof value.file === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "logging.file" must be a string.`);
-          })();
-  const maxMbRaw = value.maxMb;
-  const maxMb =
-    typeof maxMbRaw === "number" && Number.isFinite(maxMbRaw) && maxMbRaw > 0
-      ? maxMbRaw
-      : typeof maxMbRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "logging.maxMb" must be a number.`);
-          })();
-  const maxFilesRaw = value.maxFiles;
-  const maxFiles =
-    typeof maxFilesRaw === "number" && Number.isFinite(maxFilesRaw) && maxFilesRaw > 0
-      ? Math.trunc(maxFilesRaw)
-      : typeof maxFilesRaw === "undefined"
-        ? undefined
-        : (() => {
-            throw new Error(`Invalid config file ${path}: "logging.maxFiles" must be a number.`);
-          })();
-  return enabled ||
+  const file = parseOptionalNonEmptyString(value.file, path, "logging.file");
+  const maxMb = parseOptionalNumber(value.maxMb, path, "logging.maxMb", {
+    validate: (entry) => entry > 0,
+  });
+  const parsedMaxFiles = parseOptionalNumber(value.maxFiles, path, "logging.maxFiles", {
+    validate: (entry) => entry > 0,
+  });
+  const maxFiles = typeof parsedMaxFiles === "number" ? Math.trunc(parsedMaxFiles) : undefined;
+  return typeof enabled === "boolean" ||
     level ||
     format ||
     file ||

@@ -8,6 +8,44 @@ export function parseOptionalBaseUrl(raw: unknown): string | undefined {
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : undefined;
 }
 
+export function parseOptionalBoolean(
+  raw: unknown,
+  path: string,
+  label: string,
+): boolean | undefined {
+  if (typeof raw === "undefined") return undefined;
+  if (typeof raw === "boolean") return raw;
+  throw new Error(`Invalid config file ${path}: "${label}" must be a boolean.`);
+}
+
+export function parseOptionalNonEmptyString(
+  raw: unknown,
+  path: string,
+  label: string,
+): string | undefined {
+  if (typeof raw === "undefined") return undefined;
+  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  throw new Error(`Invalid config file ${path}: "${label}" must be a string.`);
+}
+
+export function parseOptionalNumber(
+  raw: unknown,
+  path: string,
+  label: string,
+  options: {
+    validate?: (value: number) => boolean;
+    expectation?: string;
+  } = {},
+): number | undefined {
+  if (typeof raw === "undefined") return undefined;
+  if (typeof raw === "number" && Number.isFinite(raw) && (options.validate?.(raw) ?? true)) {
+    return raw;
+  }
+  throw new Error(
+    `Invalid config file ${path}: "${label}" must be ${options.expectation ?? "a number"}.`,
+  );
+}
+
 export function parseCliProvider(value: unknown, path: string): CliProvider {
   const trimmed = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (
