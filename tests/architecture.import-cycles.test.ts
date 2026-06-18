@@ -9,6 +9,14 @@ const sourceRoots = [
   resolve("apps/chrome-extension/src"),
 ];
 
+type SourceLayer = "cli" | "core" | "extension";
+
+function sourceLayer(file: string): SourceLayer {
+  if (file.startsWith(`${resolve("packages/core/src")}${sep}`)) return "core";
+  if (file.startsWith(`${resolve("apps/chrome-extension/src")}${sep}`)) return "extension";
+  return "cli";
+}
+
 type PackageExport = string | { import?: string };
 
 type WorkspacePackage = {
@@ -184,5 +192,30 @@ describe("production import graph", () => {
     );
 
     expect(cycles).toEqual([]);
+  });
+
+  it("preserves the core-first workspace dependency direction", () => {
+    const files = sourceRoots.flatMap(collectSourceFiles);
+    const graph = buildImportGraph(files);
+    const allowedDependencies: Record<SourceLayer, ReadonlySet<SourceLayer>> = {
+      core: new Set(["core"]),
+      cli: new Set(["cli", "core"]),
+      extension: new Set(["extension", "core"]),
+    };
+    const violations: string[] = [];
+
+    for (const [file, dependencies] of graph) {
+      const layer = sourceLayer(file);
+      for (const dependency of dependencies) {
+        const dependencyLayer = sourceLayer(dependency);
+        if (!allowedDependencies[layer].has(dependencyLayer)) {
+          violations.push(
+            `${displayPath(file)} (${layer}) -> ${displayPath(dependency)} (${dependencyLayer})`,
+          );
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
   });
 });
