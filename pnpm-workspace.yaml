@@ -19,10 +19,11 @@ minimumReleaseAgeExclude:
   - "undici@8.4.1"
 
 overrides:
+  protobufjs: 7.6.3
   shell-quote: 1.8.4
-  tmp: 0.2.6
+  tmp: 0.2.7
   uuid: 14.0.0
-  vite: 8.0.10
+  vite: 8.0.16
   # Vitest tests use happy-dom; do not install its unused optional jsdom peer.
   "vitest>jsdom": "-"
   # WXT 0.20.26 declares esbuild but its shipped runtime does not import it.

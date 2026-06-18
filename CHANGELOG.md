@@ -7,6 +7,7 @@
 - Streaming: share EOF-safe, whitespace-preserving SSE parsing across core, CLI providers, and extension clients.
 - Config: preserve standalone `enabled: false` values for cache, media cache, slides, and logging sections.
 - Daemon chat: surface non-streaming provider failures and apply the GitHub Models compatibility fallback to JSON and SSE agent responses.
+- Dependencies: pin patched Vite, tmp, and protobufjs releases to clear known high- and moderate-severity transitive advisories.
 
 ## 0.19.0 - 2026-06-17
 
