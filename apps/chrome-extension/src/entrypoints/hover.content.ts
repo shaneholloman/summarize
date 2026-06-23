@@ -119,7 +119,7 @@ export function shouldHandleHoverTriggerEvent(event: Pick<Event, "isTrusted">): 
 }
 
 export function shouldStartHoverRequest(
-  settings: Pick<Settings, "hoverSummaries" | "token"> | null,
+  settings: Pick<Settings, "hoverSummaries"> | null,
 ): boolean {
   return Boolean(settings?.hoverSummaries);
 }

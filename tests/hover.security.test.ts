@@ -15,11 +15,11 @@ describe("hover summary security boundaries", () => {
   });
 
   it("does not require a daemon token before asking the background to summarize", () => {
-    expect(shouldStartHoverRequest({ hoverSummaries: true, token: "" })).toBe(true);
+    expect(shouldStartHoverRequest({ hoverSummaries: true })).toBe(true);
   });
 
   it("respects disabled hover summaries before asking the background to summarize", () => {
-    expect(shouldStartHoverRequest({ hoverSummaries: false, token: "token" })).toBe(false);
+    expect(shouldStartHoverRequest({ hoverSummaries: false })).toBe(false);
     expect(shouldStartHoverRequest(null)).toBe(false);
   });
 
