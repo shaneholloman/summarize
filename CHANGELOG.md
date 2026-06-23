@@ -5,6 +5,7 @@
 ### Fixes
 
 - LLM summaries: retry transient API and pre-output streaming failures such as HTTP 502 instead of failing immediately.
+- Dependencies: update eligible runtime, test, lint, formatting, and extension tooling releases.
 
 ## 0.20.0 - 2026-06-19
 
