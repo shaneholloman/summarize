@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- File inputs: parse `file:` URLs with Node's platform-aware conversion, including Windows drive and UNC paths (#318, thanks @vincent-peng).
 - LLM summaries: retry transient API and pre-output streaming failures such as HTTP 502 instead of failing immediately.
 - Dependencies: update eligible runtime, test, lint, formatting, and extension tooling releases.
 - Chrome extension: allow Direct and Ollama hover summaries without a daemon token (#317, thanks @vincent-peng).

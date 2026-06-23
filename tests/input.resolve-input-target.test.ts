@@ -103,6 +103,14 @@ describe("resolveInputTarget", () => {
     expect(() => resolveInputTarget("file:///tmp/a%2Fb.txt")).toThrow(/encoded .* characters/i);
   });
 
+  it("keeps encoded filename characters while ignoring file URL query and hash", () => {
+    expect(
+      resolveFileUrlPath(new URL("file:///tmp/report%23final%3F.txt?download=1#preview"), {
+        windows: false,
+      }),
+    ).toBe("/tmp/report#final?.txt");
+  });
+
   it("uses Node file URL parsing for Windows drive and UNC paths", () => {
     expect(resolveFileUrlPath(new URL("file:///C:/Users/Alice/input.txt"), { windows: true })).toBe(
       "C:\\Users\\Alice\\input.txt",
