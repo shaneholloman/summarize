@@ -11,6 +11,7 @@
   - `@steipete/summarize-core` (`packages/core`) = library surface for programmatic use (Sweetistics etc). No CLI entrypoints.
 - Versioning: lockstep versions; publish order: core first, then CLI (`scripts/release.sh` / `RELEASING.md`).
 - Homebrew/core formula is not owned here; BrewTestBot autobumps releases about every 3h. Do not block or manually manage it; ship and continue.
+- Chrome Web Store: every release must upload the matching `dist-chrome/summarize-chrome-extension-v<version>.zip` to item `cejgnmmhbbpdmjnfppjdfkocebngehfg`, submit it for review with automatic publishing, and verify the exact pending/published version. Skip only when every shipped change is daemon-side and the packaged extension/companion contract is unchanged.
 - Dev:
   - Build: `pnpm -s build` (builds core first)
   - Gate: `pnpm -s check`
